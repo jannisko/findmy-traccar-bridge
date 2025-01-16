@@ -1,0 +1,26 @@
+[project]
+name = "findmy-traccar-bridge"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "findmy>=0.7.6",
+    "requests>=2.32.3",
+]
+
+[project.scripts]
+findmy-traccar-bridge = "findmy_traccar_bridge.bridge:bridge"
+findmy-traccar-bridge-init = "findmy_traccar_bridge.bridge:init"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+package = true
+
+[dependency-groups]
+dev = [
+    "ruff>=0.9.2",
+]

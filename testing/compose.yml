@@ -1,0 +1,40 @@
+services:
+  traccar:
+    image: traccar/traccar:latest
+    container_name: traccar
+    restart: unless-stopped
+    ports:
+      - 80:8082
+      - 5000-5150:5000-5150
+      - 5000-5150:5000-5150/udp
+    volumes:
+      - traccar_logs:/opt/traccar/logs:rw
+      - ./traccar_config/:/opt/traccar/conf/:ro
+      - traccar_data:/opt/traccar/data:rw
+    healthcheck:
+      test:
+        ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8082/api/server"]
+      interval: 10s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+      start_interval: 5s
+
+  bridge:
+    build: ..
+    container_name: bridge
+    volumes:
+      - bridge_data:/data
+    environment:
+      BRIDGE_PRIVATE_KEYS: "change_me"
+      BRIDGE_TRACCAR_SERVER: "http://traccar:5055"
+      BRIDGE_LOGGING_LEVEL: "DEBUG"
+    restart: unless-stopped
+    depends_on:
+      traccar:
+        condition: service_healthy
+
+volumes:
+  bridge_data:
+  traccar_logs:
+  traccar_data:
