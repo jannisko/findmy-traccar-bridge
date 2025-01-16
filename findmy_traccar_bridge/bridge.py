@@ -30,6 +30,11 @@ acc = AppleAccount(RemoteAnisetteProvider(ANISETTE_SERVER))
 
 
 def bridge() -> None:
+    """
+    Main loop fetching location data from the Apple API and forwarding it to a Traccar server.
+
+    Callable via the binary `.venv/bin/findmy-traccar-bridge`
+    """
     if (private_keys_raw := os.environ.get("BRIDGE_PRIVATE_KEYS")) is None:
         raise ValueError("env variable BRIDGE_PRIVATE_KEYS must be set")
 
@@ -70,6 +75,11 @@ def bridge() -> None:
 
 
 def init() -> None:
+    """
+    One-time interactive login procedure to answer 2fa challenge and generate API token.
+
+    Callable via the binary `.venv/bin/findmy-traccar-bridge-init`
+    """
     email = input("email?  > ")
     password = getpass.getpass("passwd? > ")
 
