@@ -67,8 +67,14 @@ def bridge() -> None:
 
     private_keys = private_keys_raw.split(",")
 
-    while not acc_store.is_file():
-        time.sleep(2)
+    if not acc_store.is_file():
+        logging.info(
+            "Login token file not found at '%s'. You must first generate it interactively via "
+            "`docker compose exec bridge /bridge/.venv/bin/findmy-traccar-bridge-init`",
+            str(acc_store)
+        )
+        while not acc_store.is_file():
+            time.sleep(1)
 
     with acc_store.open() as f:
         acc.restore(json.load(f))
