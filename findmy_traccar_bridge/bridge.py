@@ -23,6 +23,8 @@ ANISETTE_SERVER = os.environ.get("BRIDGE_ANISETTE_SERVER", "https://ani.sidestor
 
 TRACCAR_SERVER = os.environ["BRIDGE_TRACCAR_SERVER"]
 
+POLLING_INTERVAL = int(os.environ.get("BRIDGE_POLL_INTERVAL", 60 * 60))
+
 logging.basicConfig(
     level=logging.getLevelName(os.environ.get("BRIDGE_LOGGING_LEVEL", "INFO").upper())
 )
@@ -77,48 +79,52 @@ def bridge() -> None:
 
     while True:
 
-        already_uploaded = {(location["id"], location["timestamp"]) for location in persistent_data["uploaded_locations"]}
+        # avoid calling the API too often, otherwise the account might be banned
+        # also makes sure to respect the interval if the process just restarted (e.g. in a bootloop)
+        if datetime.datetime.now().timestamp() - persistent_data["last_apple_api_call"] < POLLING_INTERVAL:
+            # sleep short durations so that SIGTERM stops the container
+            time.sleep(1)
+        else:
+            already_uploaded = {(location["id"], location["timestamp"]) for location in persistent_data["uploaded_locations"]}
 
-        result = acc.fetch_last_reports(keys)
+            result = acc.fetch_last_reports(keys)
+            persistent_data["last_apple_api_call"] = int(datetime.datetime.now().timestamp())
 
-        for key, reports in result.items():
-            # traccar expects unique int ids for each device
-            traccar_id = int.from_bytes(key.hashed_adv_key_bytes) % 1_000_000
+            for key, reports in result.items():
+                # traccar expects unique int ids for each device
+                traccar_id = int.from_bytes(key.hashed_adv_key_bytes) % 1_000_000
 
-            logging.info(
-                "Sending %s locations from id:%s (%s) to traccar",
-                len(reports),
-                traccar_id,
-                key.hashed_adv_key_b64,
-            )
-            for report in sorted(reports):
-
-                location = Location(
-                    id=traccar_id,
-                    lat=report.latitude,
-                    lon=report.longitude,
-                    timestamp=int(report.timestamp.timestamp())
+                logging.info(
+                    "Sending %s locations from id:%s (%s) to traccar",
+                    len(reports),
+                    traccar_id,
+                    key.hashed_adv_key_b64,
                 )
+                for report in sorted(reports):
 
-                # duplicate check
-                if (location["id"], location["timestamp"]) not in already_uploaded:
-
-                    resp = requests.post(
-                        TRACCAR_SERVER,
-                        data=location,
+                    location = Location(
+                        id=traccar_id,
+                        lat=report.latitude,
+                        lon=report.longitude,
+                        timestamp=int(report.timestamp.timestamp())
                     )
 
-                    if resp.status_code == 200:
-                        already_uploaded.add((location["id"], location["timestamp"]))
-                        persistent_data["uploaded_locations"].append(location)
-                    elif resp.status_code == 400:
-                        # device id has not been claimed yet in the traccar UI. remember to retry
-                        pass
+                    # duplicate check
+                    if (location["id"], location["timestamp"]) not in already_uploaded:
 
+                        resp = requests.post(
+                            TRACCAR_SERVER,
+                            data=location,
+                        )
 
-        persistent_data_store.write_text(json.dumps(persistent_data))
+                        if resp.status_code == 200:
+                            already_uploaded.add((location["id"], location["timestamp"]))
+                            persistent_data["uploaded_locations"].append(location)
+                        elif resp.status_code == 400:
+                            # device id has not been claimed yet in the traccar UI. remember to retry
+                            pass
 
-        time.sleep(int(os.environ.get("BRIDGE_POLL_INTERVAL", 60 * 60)))
+            persistent_data_store.write_text(json.dumps(persistent_data))
 
 
 def init() -> None:
