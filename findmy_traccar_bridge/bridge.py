@@ -1,5 +1,7 @@
+import datetime
 import json
 from pathlib import Path
+from typing import TypedDict
 
 from findmy.reports import (
     AppleAccount,
@@ -25,9 +27,32 @@ logging.basicConfig(
     level=logging.getLevelName(os.environ.get("BRIDGE_LOGGING_LEVEL", "INFO").upper())
 )
 
+persistent_data_store = Path("/data/persistent_data.json")
 acc_store = Path("/data/account.json")
 acc = AppleAccount(RemoteAnisetteProvider(ANISETTE_SERVER))
 
+class Location(TypedDict):
+    id: int
+    timestamp: int
+    lat: float
+    lon: float
+
+class PersistentData(TypedDict):
+    # rejected locations by traccar (id has not been claimed by a user), will keep retrying to upload these
+    pending_locations: list[Location]
+    # recently uploaded locations used for deduplication
+    uploaded_locations: list[Location]
+    # unix timestamp
+    last_apple_api_call: int
+
+if not persistent_data_store.is_file():
+    persistent_data_store.write_text(
+        json.dumps(PersistentData(
+            pending_locations=[],
+            uploaded_locations=[],
+            last_apple_api_call=0,
+        ))
+    )
 
 def bridge() -> None:
     """
@@ -48,8 +73,14 @@ def bridge() -> None:
 
     keys = [KeyPair.from_b64(key) for key in private_keys]
 
+    persistent_data: PersistentData = json.loads(persistent_data_store.read_text())
+
     while True:
+
+        already_uploaded = {(location["id"], location["timestamp"]) for location in persistent_data["uploaded_locations"]}
+
         result = acc.fetch_last_reports(keys)
+
         for key, reports in result.items():
             # traccar expects unique int ids for each device
             traccar_id = int.from_bytes(key.hashed_adv_key_bytes) % 1_000_000
@@ -61,15 +92,31 @@ def bridge() -> None:
                 key.hashed_adv_key_b64,
             )
             for report in sorted(reports):
-                requests.post(
-                    TRACCAR_SERVER,
-                    data={
-                        "id": traccar_id,
-                        "lat": report.latitude,
-                        "lon": report.longitude,
-                        "timestamp": report.timestamp.strftime("%s"),
-                    },
+
+                location = Location(
+                    id=traccar_id,
+                    lat=report.latitude,
+                    lon=report.longitude,
+                    timestamp=int(report.timestamp.timestamp())
                 )
+
+                # duplicate check
+                if (location["id"], location["timestamp"]) not in already_uploaded:
+
+                    resp = requests.post(
+                        TRACCAR_SERVER,
+                        data=location,
+                    )
+
+                    if resp.status_code == 200:
+                        already_uploaded.add((location["id"], location["timestamp"]))
+                        persistent_data["uploaded_locations"].append(location)
+                    elif resp.status_code == 400:
+                        # device id has not been claimed yet in the traccar UI. remember to retry
+                        pass
+
+
+        persistent_data_store.write_text(json.dumps(persistent_data))
 
         time.sleep(int(os.environ.get("BRIDGE_POLL_INTERVAL", 60 * 60)))
 
