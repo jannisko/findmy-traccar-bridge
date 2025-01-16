@@ -103,6 +103,10 @@ def bridge() -> None:
                 (location["id"], location["timestamp"])
                 for location in persistent_data["uploaded_locations"]
             }
+            already_pending = {
+                (location["id"], location["timestamp"])
+                for location in persistent_data["pending_locations"]
+            }
 
             result = acc.fetch_last_reports(keys)
             persistent_data["last_apple_api_call"] = int(
@@ -119,29 +123,63 @@ def bridge() -> None:
                     traccar_id,
                     key.hashed_adv_key_b64,
                 )
-                for report in sorted(reports):
-                    location = Location(
+
+                transformed_reports = [
+                    Location(
                         id=traccar_id,
                         lat=report.latitude,
                         lon=report.longitude,
                         timestamp=int(report.timestamp.timestamp()),
                     )
+                    for report in reports
+                ]
 
-                    # duplicate check
-                    if (location["id"], location["timestamp"]) not in already_uploaded:
-                        resp = requests.post(
-                            TRACCAR_SERVER,
-                            data=location,
+                # queue up new locations received from API without duplicating any
+                persistent_data["pending_locations"].extend(
+                    [
+                        location
+                        for location in transformed_reports
+                        if (location["id"], location["timestamp"])
+                        not in already_uploaded
+                        and (location["id"], location["timestamp"])
+                        not in already_pending
+                    ]
+                )
+
+            failed_upload_locations = []
+
+            for location in persistent_data["pending_locations"]:
+                resp = requests.post(
+                    TRACCAR_SERVER,
+                    data=location,
+                )
+
+                if resp.status_code == 200:
+                    already_uploaded.add((location["id"], location["timestamp"]))
+                    persistent_data["uploaded_locations"].append(location)
+                else:
+                    if resp.status_code != 400:
+                        logging.warning(
+                            "Upload (%s, %s) failed with unexpected code %s",
+                            location["id"],
+                            location["timestamp"],
+                            resp.status_code,
                         )
+                        logging.debug("API returned %s", resp.text)
+                    # device id has not been claimed yet in the traccar UI. remember to retry
+                    failed_upload_locations.append(location)
 
-                        if resp.status_code == 200:
-                            already_uploaded.add(
-                                (location["id"], location["timestamp"])
-                            )
-                            persistent_data["uploaded_locations"].append(location)
-                        elif resp.status_code == 400:
-                            # device id has not been claimed yet in the traccar UI. remember to retry
-                            pass
+            unique_failed_devices = {
+                location["id"] for location in failed_upload_locations
+            }
+            if len(unique_failed_devices) > 0:
+                logging.warning(
+                    "Failed to upload locations for devices %s. They might need to be claimed in the traccar UI first. "
+                    "Reupload will be attempted.",
+                    unique_failed_devices,
+                )
+
+            persistent_data["pending_locations"] = failed_upload_locations
 
             persistent_data_store.write_text(json.dumps(persistent_data))
 
