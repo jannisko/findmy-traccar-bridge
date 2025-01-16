@@ -1,7 +1,6 @@
 services:
   traccar:
     image: traccar/traccar:latest
-    container_name: traccar
     restart: unless-stopped
     ports:
       - 80:8082
@@ -22,7 +21,6 @@ services:
 
   bridge:
     build: ..
-    container_name: bridge
     volumes:
       - bridge_data:/data
     environment:
