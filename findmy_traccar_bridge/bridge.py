@@ -61,6 +61,8 @@ if not persistent_data_store.is_file():
         )
     )
 
+def commit(persistent_data: PersistentData) -> None:
+    persistent_data_store.write_text(json.dumps(persistent_data))
 
 def bridge() -> None:
     """
@@ -112,6 +114,7 @@ def bridge() -> None:
             persistent_data["last_apple_api_call"] = int(
                 datetime.datetime.now().timestamp()
             )
+            commit(persistent_data)
 
             for key, reports in result.items():
                 # traccar expects unique int ids for each device
@@ -181,7 +184,7 @@ def bridge() -> None:
 
             persistent_data["pending_locations"] = failed_upload_locations
 
-            persistent_data_store.write_text(json.dumps(persistent_data))
+            commit(persistent_data)
 
 
 def init() -> None:
