@@ -21,8 +21,6 @@ import getpass
 
 ANISETTE_SERVER = os.environ.get("BRIDGE_ANISETTE_SERVER", "https://ani.sidestore.io")
 
-TRACCAR_SERVER = os.environ["BRIDGE_TRACCAR_SERVER"]
-
 POLLING_INTERVAL = int(os.environ.get("BRIDGE_POLL_INTERVAL", 60 * 60))
 
 logging.basicConfig(
@@ -74,6 +72,8 @@ def bridge() -> None:
         raise ValueError("env variable BRIDGE_PRIVATE_KEYS must be set")
 
     private_keys = private_keys_raw.split(",")
+
+    TRACCAR_SERVER = os.environ["BRIDGE_TRACCAR_SERVER"]
 
     if not acc_store.is_file():
         logging.info(
