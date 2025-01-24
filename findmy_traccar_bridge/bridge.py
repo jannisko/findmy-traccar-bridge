@@ -10,22 +10,22 @@ from findmy.reports import (
     TrustedDeviceSecondFactorMethod,
 )
 
-import logging
 from findmy import KeyPair
 from findmy.reports import RemoteAnisetteProvider
 import requests
 import os
 import time
 import getpass
+from loguru import logger
+import sys
 
+logger.remove()
+logger.add(sys.stderr, level=os.environ.get("BRIDGE_LOGGING_LEVEL", "INFO"))
 
 ANISETTE_SERVER = os.environ.get("BRIDGE_ANISETTE_SERVER", "https://ani.sidestore.io")
 
 POLLING_INTERVAL = int(os.environ.get("BRIDGE_POLL_INTERVAL", 60 * 60))
 
-logging.basicConfig(
-    level=logging.getLevelName(os.environ.get("BRIDGE_LOGGING_LEVEL", "INFO").upper())
-)
 
 data_folder = Path("./data/")
 data_folder.mkdir(exist_ok=True)
@@ -79,11 +79,11 @@ def bridge() -> None:
 
     TRACCAR_SERVER = os.environ["BRIDGE_TRACCAR_SERVER"]
 
-    logging.info("Target Traccar server: %s", TRACCAR_SERVER)
+    logger.info("Target Traccar server: {}", TRACCAR_SERVER)
 
     if not acc_store.is_file():
-        logging.info(
-            "Login token file not found at '%s'. You must first generate it interactively via "
+        logger.info(
+            "Login token file not found at '{}'. You must first generate it interactively via "
             "`docker compose exec bridge .venv/bin/findmy-traccar-bridge-init`",
             str(acc_store),
         )
@@ -93,14 +93,14 @@ def bridge() -> None:
     with acc_store.open() as f:
         acc.restore(json.load(f))
 
-    logging.info(
-        "Successfully loaded Apple account token with uid %s...", acc._asyncacc._uid[:4]
+    logger.info(
+        "Successfully loaded Apple account token with uid {}...", acc._asyncacc._uid[:4]
     )
 
     keys = [KeyPair.from_b64(key) for key in private_keys]
 
-    logging.info(
-        "Successfully parsed private keys for %s device%s",
+    logger.info(
+        "Successfully parsed private keys for {} device{}",
         len(keys),
         "" if len(keys) == 1 else "s",
     )
@@ -108,8 +108,8 @@ def bridge() -> None:
     persistent_data: PersistentData = json.loads(persistent_data_store.read_text())
     last_traccar_push_timestamp = 0  # not super important, so not persistent
 
-    logging.info(
-        "Next Apple API polling in %s seconds (%s UTC)",
+    logger.info(
+        "Next Apple API polling in {} seconds ({} UTC)",
         time_until_next := max(
             0,
             int(
@@ -160,8 +160,8 @@ def bridge() -> None:
                 # traccar expects unique int ids for each device
                 traccar_id = int.from_bytes(key.hashed_adv_key_bytes) % 1_000_000
 
-                logging.info(
-                    "Received %s locations from device:%s (%s...) from Apple",
+                logger.info(
+                    "Received {} locations from device:{} ({}...) from Apple",
                     len(reports),
                     traccar_id,
                     key.hashed_adv_key_b64[:8],
@@ -188,15 +188,15 @@ def bridge() -> None:
                         not in already_pending
                     ]
                 )
-                logging.info(
-                    "Queued up %s locations from device:%s (%...) for upload (deduplicated)",
+                logger.info(
+                    "Queued up {} locations from device:{} (%...) for upload (deduplicated)",
                     len(deduplicated_locations),
                     traccar_id,
                     key.hashed_adv_key_b64[:8],
                 )
 
-            logging.info(
-                "Next Apple API polling in %s seconds (%s UTC)",
+            logger.info(
+                "Next Apple API polling in {} seconds ({} UTC)",
                 int(
                     -(
                         datetime.datetime.now().timestamp()
@@ -213,8 +213,8 @@ def bridge() -> None:
 
         elif time_until_next_traccar_push <= 0:
             if (count_locations := len(persistent_data["pending_locations"])) > 0:
-                logging.info(
-                    "Uploading %s locations to traccar (%s)",
+                logger.info(
+                    "Uploading {} locations to traccar ({})",
                     count_locations,
                     TRACCAR_SERVER,
                 )
@@ -231,13 +231,13 @@ def bridge() -> None:
                     persistent_data["uploaded_locations"].append(location)
                 else:
                     if resp.status_code != 400:
-                        logging.warning(
-                            "Upload (%s, %s) failed with unexpected code %s",
+                        logger.warning(
+                            "Upload ({}, {}) failed with unexpected code {}",
                             location["id"],
                             location["timestamp"],
                             resp.status_code,
                         )
-                        logging.debug("API returned %s", resp.text)
+                        logger.debug("API returned {}", resp.text)
                     # device id has not been claimed yet in the traccar UI. remember to retry
                     failed_upload_locations.append(location)
 
@@ -245,8 +245,8 @@ def bridge() -> None:
                 location["id"] for location in failed_upload_locations
             }
             if len(unique_failed_devices) > 0:
-                logging.warning(
-                    "Failed to upload locations for devices %s. They might need to be claimed in the traccar UI first. "
+                logger.warning(
+                    "Failed to upload locations for devices {}. They might need to be claimed in the traccar UI first. "
                     "Reupload will be attempted.",
                     unique_failed_devices,
                 )
