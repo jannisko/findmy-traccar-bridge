@@ -106,17 +106,41 @@ def bridge() -> None:
     )
 
     persistent_data: PersistentData = json.loads(persistent_data_store.read_text())
+    last_traccar_push_timestamp = 0  # not super important, so not persistent
+
+    logging.info(
+        "Next Apple API polling in %s seconds (%s UTC)",
+        time_until_next := max(
+            0,
+            int(
+                -(
+                    datetime.datetime.now().timestamp()
+                    - persistent_data["last_apple_api_call"]
+                    - POLLING_INTERVAL
+                )
+            ),
+        ),
+        (
+            datetime.datetime.now() + datetime.timedelta(seconds=time_until_next)
+        ).isoformat(timespec="seconds"),
+    )
 
     while True:
         # avoid calling the API too often, otherwise the account might be banned
         # also makes sure to respect the interval if the process just restarted (e.g. in a bootloop)
-        if (
-            datetime.datetime.now().timestamp() - persistent_data["last_apple_api_call"]
-            < POLLING_INTERVAL
-        ):
+        time_until_next_apple_polling = -(
+            datetime.datetime.now().timestamp()
+            - persistent_data["last_apple_api_call"]
+            - POLLING_INTERVAL
+        )
+        time_until_next_traccar_push = -(
+            datetime.datetime.now().timestamp() - last_traccar_push_timestamp - 30
+        )
+
+        if time_until_next_apple_polling > 0 and time_until_next_traccar_push > 0:
             # sleep short durations so that SIGTERM stops the container
             time.sleep(1)
-        else:
+        elif time_until_next_apple_polling <= 0:
             already_uploaded = {
                 (location["id"], location["timestamp"])
                 for location in persistent_data["uploaded_locations"]
@@ -137,11 +161,10 @@ def bridge() -> None:
                 traccar_id = int.from_bytes(key.hashed_adv_key_bytes) % 1_000_000
 
                 logging.info(
-                    "Queueing %s locations from device:%s (%s) to traccar (%s)",
+                    "Received %s locations from device:%s (%s) from Apple",
                     len(reports),
                     traccar_id,
                     key.hashed_adv_key_b64,
-                    TRACCAR_SERVER,
                 )
 
                 transformed_reports = [
@@ -156,7 +179,7 @@ def bridge() -> None:
 
                 # queue up new locations received from API without duplicating any
                 persistent_data["pending_locations"].extend(
-                    [
+                    deduplicated_locations := [
                         location
                         for location in transformed_reports
                         if (location["id"], location["timestamp"])
@@ -164,6 +187,36 @@ def bridge() -> None:
                         and (location["id"], location["timestamp"])
                         not in already_pending
                     ]
+                )
+                logging.info(
+                    "Queued up %s locations from device:%s (%s) for upload (deduplicated)",
+                    len(deduplicated_locations),
+                    traccar_id,
+                    key.hashed_adv_key_b64,
+                )
+
+            logging.info(
+                "Next Apple API polling in %s seconds (%s UTC)",
+                int(
+                    -(
+                        datetime.datetime.now().timestamp()
+                        - persistent_data["last_apple_api_call"]
+                        - POLLING_INTERVAL
+                    )
+                ),
+                datetime.datetime.fromtimestamp(
+                    persistent_data["last_apple_api_call"] + POLLING_INTERVAL
+                ).isoformat(timespec="seconds"),
+            )
+
+            commit(persistent_data)
+
+        elif time_until_next_traccar_push <= 0:
+            if (count_locations := len(persistent_data["pending_locations"])) > 0:
+                logging.info(
+                    "Uploading %s locations to traccar (%s)",
+                    count_locations,
+                    TRACCAR_SERVER,
                 )
 
             failed_upload_locations = []
@@ -175,7 +228,6 @@ def bridge() -> None:
                 )
 
                 if resp.status_code == 200:
-                    already_uploaded.add((location["id"], location["timestamp"]))
                     persistent_data["uploaded_locations"].append(location)
                 else:
                     if resp.status_code != 400:
@@ -200,6 +252,8 @@ def bridge() -> None:
                 )
 
             persistent_data["pending_locations"] = failed_upload_locations
+
+            last_traccar_push_timestamp = datetime.datetime.now().timestamp()
 
             commit(persistent_data)
 
