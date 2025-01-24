@@ -1,23 +1,22 @@
 import datetime
+import getpass
 import json
+import os
+import sys
+import time
 from pathlib import Path
 from typing import TypedDict
 
+import requests
+from findmy import KeyPair
 from findmy.reports import (
     AppleAccount,
     LoginState,
+    RemoteAnisetteProvider,
     SmsSecondFactorMethod,
     TrustedDeviceSecondFactorMethod,
 )
-
-from findmy import KeyPair
-from findmy.reports import RemoteAnisetteProvider
-import requests
-import os
-import time
-import getpass
 from loguru import logger
-import sys
 
 logger.remove()
 logger.add(sys.stderr, level=os.environ.get("BRIDGE_LOGGING_LEVEL", "INFO"))
