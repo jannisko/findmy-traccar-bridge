@@ -161,10 +161,10 @@ def bridge() -> None:
                 traccar_id = int.from_bytes(key.hashed_adv_key_bytes) % 1_000_000
 
                 logging.info(
-                    "Received %s locations from device:%s (%s) from Apple",
+                    "Received %s locations from device:%s (%s...) from Apple",
                     len(reports),
                     traccar_id,
-                    key.hashed_adv_key_b64,
+                    key.hashed_adv_key_b64[:8],
                 )
 
                 transformed_reports = [
@@ -189,10 +189,10 @@ def bridge() -> None:
                     ]
                 )
                 logging.info(
-                    "Queued up %s locations from device:%s (%s) for upload (deduplicated)",
+                    "Queued up %s locations from device:%s (%...) for upload (deduplicated)",
                     len(deduplicated_locations),
                     traccar_id,
-                    key.hashed_adv_key_b64,
+                    key.hashed_adv_key_b64[:8],
                 )
 
             logging.info(
