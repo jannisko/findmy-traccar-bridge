@@ -4,6 +4,8 @@ A simple script to continuously import [OpenHaystack](https://github.com/seemoo-
 This project uses the excellent [findmy.py](https://github.com/malmeloo/FindMy.py) project to load the encrypted location data
 of your custom tracking beacons from Apple's FindMy network.
 
+[usage_screencast.webm](https://github.com/user-attachments/assets/5c7c7691-e19e-4627-8b0c-9fa198d0aedf)
+
 ## Requirements
 
 - Docker or Python 3.12
