@@ -60,14 +60,14 @@ To query the internal Apple FindMy API you will need to interactively log into y
 when initially setting up the containers. Until this is done, the bridge container will stay idle.
 
 ```shell
-docker compose exec bridge /bridge/.venv/bin/findmy-traccar-bridge-init
+docker compose exec bridge .venv/bin/findmy-traccar-bridge-init
 ```
 
 <details>
   <summary>via docker</summary>
 
   ```shell
-  docker exec -it bridge /bridge/.venv/bin/findmy-traccar-bridge-init
+  docker exec -it bridge .venv/bin/findmy-traccar-bridge-init
   ```
 </details>
 <details>
@@ -95,5 +95,5 @@ An example compose file running the bridge and Traccar locally can be found in t
 git clone https://github.com/jannisko/findmy-traccar-bridge
 cd findmy-traccar-bridge/testing
 docker compose up -d
-docker compose exec bridge /bridge/.venv/bin/findmy-traccar-bridge-init
+docker compose exec bridge .venv/bin/findmy-traccar-bridge-init
 ```

@@ -15,6 +15,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 FROM python:3.12-slim
 
+WORKDIR /bridge
+
 COPY --from=builder --chown=app:app /bridge/.venv /bridge/.venv
 
-CMD ["/bridge/.venv/bin/findmy-traccar-bridge"]
+CMD [".venv/bin/findmy-traccar-bridge"]

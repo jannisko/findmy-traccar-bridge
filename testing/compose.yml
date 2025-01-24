@@ -22,7 +22,7 @@ services:
   bridge:
     build: ..
     volumes:
-      - bridge_data:/data
+      - bridge_data:/bridge/data
     environment:
       BRIDGE_PRIVATE_KEYS: "change_me"
       BRIDGE_TRACCAR_SERVER: "http://traccar:5055"

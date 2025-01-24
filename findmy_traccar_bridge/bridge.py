@@ -27,8 +27,10 @@ logging.basicConfig(
     level=logging.getLevelName(os.environ.get("BRIDGE_LOGGING_LEVEL", "INFO").upper())
 )
 
-persistent_data_store = Path("/data/persistent_data.json")
-acc_store = Path("/data/account.json")
+data_folder = Path("./data/")
+data_folder.mkdir(exist_ok=True)
+persistent_data_store = data_folder / "persistent_data.json"
+acc_store = data_folder / "account.json"
 acc = AppleAccount(RemoteAnisetteProvider(ANISETTE_SERVER))
 
 
@@ -78,7 +80,7 @@ def bridge() -> None:
     if not acc_store.is_file():
         logging.info(
             "Login token file not found at '%s'. You must first generate it interactively via "
-            "`docker compose exec bridge /bridge/.venv/bin/findmy-traccar-bridge-init`",
+            "`docker compose exec bridge .venv/bin/findmy-traccar-bridge-init`",
             str(acc_store),
         )
         while not acc_store.is_file():
