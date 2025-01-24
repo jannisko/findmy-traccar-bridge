@@ -61,8 +61,10 @@ if not persistent_data_store.is_file():
         )
     )
 
+
 def commit(persistent_data: PersistentData) -> None:
     persistent_data_store.write_text(json.dumps(persistent_data))
+
 
 def bridge() -> None:
     """
@@ -77,6 +79,8 @@ def bridge() -> None:
 
     TRACCAR_SERVER = os.environ["BRIDGE_TRACCAR_SERVER"]
 
+    logging.info("Target Traccar server: %s", TRACCAR_SERVER)
+
     if not acc_store.is_file():
         logging.info(
             "Login token file not found at '%s'. You must first generate it interactively via "
@@ -89,7 +93,17 @@ def bridge() -> None:
     with acc_store.open() as f:
         acc.restore(json.load(f))
 
+    logging.info(
+        "Successfully loaded Apple account token with uid %s...", acc._asyncacc._uid[:4]
+    )
+
     keys = [KeyPair.from_b64(key) for key in private_keys]
+
+    logging.info(
+        "Successfully parsed private keys for %s device%s",
+        len(keys),
+        "" if len(keys) == 1 else "s",
+    )
 
     persistent_data: PersistentData = json.loads(persistent_data_store.read_text())
 
@@ -123,10 +137,11 @@ def bridge() -> None:
                 traccar_id = int.from_bytes(key.hashed_adv_key_bytes) % 1_000_000
 
                 logging.info(
-                    "Sending %s locations from id:%s (%s) to traccar",
+                    "Queueing %s locations from device:%s (%s) to traccar (%s)",
                     len(reports),
                     traccar_id,
                     key.hashed_adv_key_b64,
+                    TRACCAR_SERVER,
                 )
 
                 transformed_reports = [
