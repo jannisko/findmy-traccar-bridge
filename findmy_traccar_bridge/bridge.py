@@ -188,7 +188,7 @@ def bridge() -> None:
                     ]
                 )
                 logger.info(
-                    "Queued up {} locations from device:{} (%...) for upload (deduplicated)",
+                    "Queued up {} locations from device:{} ({}...) for upload (deduplicated)",
                     len(deduplicated_locations),
                     traccar_id,
                     key.hashed_adv_key_b64[:8],
