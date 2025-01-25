@@ -31,10 +31,10 @@ services:
   bridge:
     build: https://github.com/jannisko/findmy-traccar-bridge.git
     volumes:
-      - ./:/data
+      - ./:/bridge/data
     environment:
       BRIDGE_PRIVATE_KEYS: "<key1>,<key2>,..."
-      BRIDGE_TRACCAR_SERVER: "<your traccar base url>"
+      BRIDGE_TRACCAR_SERVER: "<your traccar base url>:5055"
 ```
 
 <details>
