@@ -1,9 +1,12 @@
 # findmy-traccar-bridge
 
+
+
 A simple script to continuously import [OpenHaystack](https://github.com/seemoo-lab/openhaystack) locations into [Traccar](https://www.traccar.org/).
 This project uses the excellent [findmy.py](https://github.com/malmeloo/FindMy.py) project to load the encrypted location data
 of your custom tracking beacons from Apple's FindMy network.
 
+![image](https://github.com/user-attachments/assets/6f6b73d3-7cf5-4062-ad7a-13c3fbde2d6b)
 ![usage_screencast](https://github.com/user-attachments/assets/aa041c66-8490-470f-9abc-8da229c421d4)
 
 ## Requirements
