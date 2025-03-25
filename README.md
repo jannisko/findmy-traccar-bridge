@@ -93,6 +93,9 @@ The script can be configured via the following environment variables:
 - `BRIDGE_POLL_INTERVAL` - optional (default: 3600 (60 minutes)) - time to wait between querying the apple API. Too frequent polling might get your account banned.
 - `BRIDGE_LOGGING_LEVEL` - optional (default: INFO)
 
+> [!TIP]
+> Self-hosting Anisette (and setting `BRIDGE_ANISETTE_SERVER`) is optional, but using the default value may cause issues with authentication. If you are getting repeated errors like `LoginState.REQUIRE_2FA`, this might be the culprit.
+
 ## Example
 
 An example compose file running the bridge and Traccar locally can be found in the [testing](./testing) directory:
