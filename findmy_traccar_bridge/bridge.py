@@ -9,6 +9,7 @@ from typing import TypedDict
 
 import requests
 from findmy import KeyPair
+from findmy import FindMyAccessory
 from findmy.reports import (
     AppleAccount,
     LoginState,
@@ -71,10 +72,16 @@ def bridge() -> None:
 
     Callable via the binary `.venv/bin/findmy-traccar-bridge`
     """
-    if (private_keys_raw := os.environ.get("BRIDGE_PRIVATE_KEYS")) is None:
-        raise ValueError("env variable BRIDGE_PRIVATE_KEYS must be set")
 
-    private_keys = private_keys_raw.split(",")
+    private_keys = (os.environ.get("BRIDGE_PRIVATE_KEYS") or "").split(",")
+    plist_paths = (os.environ["BRIDGE_PLIST_PATHS"] or "").split(",")
+    if len(private_keys) + len(plist_paths) == 0:
+        raise ValueError("env variable BRIDGE_PRIVATE_KEYS and/or BRIDGE_PLIST_PATHS must be set")
+
+    real_airtags = []
+    for plist in plist_paths:
+        with Path(plist).open("rb") as f:
+            real_airtags.append(FindMyAccessory.from_plist(f))
 
     TRACCAR_SERVER = os.environ["BRIDGE_TRACCAR_SERVER"]
 
@@ -96,12 +103,15 @@ def bridge() -> None:
         "Successfully loaded Apple account token with uid {}...", acc._asyncacc._uid[:4]
     )
 
-    keys = [KeyPair.from_b64(key) for key in private_keys]
+    haystack_keys = [KeyPair.from_b64(key) for key in private_keys]
 
     logger.info(
-        "Successfully parsed private keys for {} device{}",
-        len(keys),
-        "" if len(keys) == 1 else "s",
+        "Successfully parsed private keys for {} Haystack device{} and {} Airtag{}",
+        len(haystack_keys),
+        "" if len(haystack_keys) == 1 else "s",
+        len(real_airtags),
+        "" if len(real_airtags) == 1 else "s",
+
     )
 
     persistent_data: PersistentData = json.loads(persistent_data_store.read_text())
@@ -149,21 +159,33 @@ def bridge() -> None:
                 for location in persistent_data["pending_locations"]
             }
 
-            result = acc.fetch_last_reports(keys)
+            result = acc.fetch_last_reports(haystack_keys)
+            for airtag in real_airtags:
+                result[airtag.identifier] = acc.fetch_last_reports(airtag)
+
             persistent_data["last_apple_api_call"] = int(
                 datetime.datetime.now().timestamp()
             )
             commit(persistent_data)
 
             for key, reports in result.items():
-                # traccar expects unique int ids for each device
-                traccar_id = int.from_bytes(key.hashed_adv_key_bytes) % 1_000_000
+                # Traccar expects unique int ids for each device. How we get it depends on the accessory type.
+                if isinstance(key, str):
+                    # The result set belongs to a "real" FindMy accessory, so we will get many Keypairs
+                    # back due to key rotation. Let's identify using the exported `identifier`
+                    traccar_id = int.from_bytes(key.encode()) % 1_000_000
+                    shorthand = key
+                else:
+                    # The result set belongs to a Haystack accessory, so we the keypair is stable. We
+                    # will use that as an identifier.
+                    traccar_id = int.from_bytes(key.hashed_adv_key_bytes) % 1_000_000
+                    shorthand = key.hashed_adv_key_b64[:8]
 
                 logger.info(
                     "Received {} locations from device:{} ({}...) from Apple",
                     len(reports),
                     traccar_id,
-                    key.hashed_adv_key_b64[:8],
+                    shorthand,
                 )
 
                 transformed_reports = [
@@ -191,7 +213,7 @@ def bridge() -> None:
                     "Queued up {} locations from device:{} ({}...) for upload (deduplicated)",
                     len(deduplicated_locations),
                     traccar_id,
-                    key.hashed_adv_key_b64[:8],
+                    shorthand,
                 )
 
             logger.info(
