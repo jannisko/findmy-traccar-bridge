@@ -105,14 +105,21 @@ def bridge() -> None:
 
     haystack_keys = [KeyPair.from_b64(key) for key in private_keys]
 
-    logger.info(
-        "Successfully parsed private keys for {} Haystack device{} and {} Airtag{}",
-        len(haystack_keys),
-        "" if len(haystack_keys) == 1 else "s",
-        len(real_airtags),
-        "" if len(real_airtags) == 1 else "s",
-
-    )
+    logger.info("Configured {} device{}:",
+                len(haystack_keys) + len(real_airtags),
+                "" if len(real_airtags) == 1 else "s")
+    for key in haystack_keys:
+        logger.info(
+            "   Haystack device\t| Private key: {}[...]\t\t|\tTraccar ID {}",
+            key.hashed_adv_key_b64[:16],
+            int.from_bytes(key.hashed_adv_key_bytes) % 1_000_000
+        )
+    for airtag in real_airtags:
+        logger.info(
+            "   FindMy device\t\t| plist identifier: {}[...]\t|\tTraccar ID {}",
+            airtag.identifier[:16],
+            int.from_bytes(airtag.identifier.encode()) % 1_000_000
+        )
 
     persistent_data: PersistentData = json.loads(persistent_data_store.read_text())
     last_traccar_push_timestamp = 0  # not super important, so not persistent
