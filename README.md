@@ -35,6 +35,13 @@ services:
     environment:
       BRIDGE_PRIVATE_KEYS: "<key1>,<key2>,..."
       BRIDGE_TRACCAR_SERVER: "<your traccar base url>:5055"
+      BRIDGE_ANISETTE_SERVER: "http://anisette:6969"
+  anisette:
+    image: dadoum/anisette-v3-server
+    volumes:
+      - anisette_data:/home/Alcoholic/.config/anisette-v3/lib/
+volumes:
+  anisette_data:
 ```
 
 <details>
@@ -42,10 +49,17 @@ services:
 
   ```shell
   docker build -t findmy-traccar-bridge https://github.com/jannisko/findmy-traccar-bridge.git
+  docker network create bridge_net
+  docker run -d --name anisette \
+  -v ./anisette:/home/Alcoholic/.config/anisette-v3/lib/ \
+  --network bridge_net \
+  dadoum/anisette-v3-server
   docker run -d --name bridge \
-  -v ./:/data
-  -e BRIDGE_PRIVATE_KEYS="<key1>,<key2>,..."
-  -e BRIDGE_TRACCAR_URL="<your traccar base url>"
+  -v ./:/data \
+  --network bridge_net \
+  -e BRIDGE_PRIVATE_KEYS="<key1>,<key2>,..." \
+  -e BRIDGE_TRACCAR_SERVER="<your traccar base url>" \
+  -e BRIDGE_ANISETTE_SERVER="anisette:6969" \
   findmy-traccar-bridge
   ```
 </details>
@@ -54,6 +68,7 @@ services:
   <summary>as a python package</summary>
 
   ```shell
+  # you should probably start your own anisette server for this
   export BRIDGE_PRIVATE_KEYS="<key1>,<key2>,..." BRIDGE_TRACCAR_SERVER="<your traccar base url>"
   uvx --from=git+https://github.com/jannisko/findmy-traccar-bridge findmy-traccar-bridge
   ```
