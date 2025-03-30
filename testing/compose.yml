@@ -26,13 +26,20 @@ services:
     environment:
       BRIDGE_PRIVATE_KEYS: "change_me"
       BRIDGE_TRACCAR_SERVER: "http://traccar:5055"
+      BRDIGE_ANISETTE_SERVER: "http://anisette:6969"
       BRIDGE_LOGGING_LEVEL: "DEBUG"
     restart: unless-stopped
     depends_on:
       traccar:
         condition: service_healthy
 
+  anisette:
+    image: dadoum/anisette-v3-server
+    volumes:
+      - anisette_data:/home/Alcoholic/.config/anisette-v3/lib/
+
 volumes:
   bridge_data:
   traccar_logs:
   traccar_data:
+  anisette_data:
