@@ -73,15 +73,18 @@ def bridge() -> None:
     Callable via the binary `.venv/bin/findmy-traccar-bridge`
     """
 
-    private_keys = (os.environ.get("BRIDGE_PRIVATE_KEYS") or "").split(",")
-    plist_paths = (os.environ["BRIDGE_PLIST_PATHS"] or "").split(",")
+    private_keys = [k for k in (os.environ.get("BRIDGE_PRIVATE_KEYS") or "").split(",") if k]
+    plist_paths = [p for p in (os.environ.get("BRIDGE_PLIST_PATHS") or "").split(",") if p]
     if len(private_keys) + len(plist_paths) == 0:
         raise ValueError("env variable BRIDGE_PRIVATE_KEYS and/or BRIDGE_PLIST_PATHS must be set")
 
     real_airtags = []
     for plist in plist_paths:
-        with Path(plist).open("rb") as f:
-            real_airtags.append(FindMyAccessory.from_plist(f))
+        try:
+            with Path(plist).open("rb") as f:
+                real_airtags.append(FindMyAccessory.from_plist(f))
+        except Exception as e:
+            logger.error("Failed to load plist file {}: {}", plist, str(e))
 
     TRACCAR_SERVER = os.environ["BRIDGE_TRACCAR_SERVER"]
 
