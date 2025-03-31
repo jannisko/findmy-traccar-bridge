@@ -66,6 +66,39 @@ def commit(persistent_data: PersistentData) -> None:
     persistent_data_store.write_text(json.dumps(persistent_data))
 
 
+def load_airtags_from_directory(directory_path: str | None) -> list[FindMyAccessory]:
+    """
+    Load all FindMyAccessory objects from .plist files in the specified directory.
+    
+    Args:
+        directory_path: Path to the directory containing .plist files
+        
+    Returns:
+        List of loaded FindMyAccessory objects
+    """
+    if not directory_path:
+        return []
+        
+    airtags = []
+    dir_path = Path(directory_path)
+    
+    if not dir_path.is_dir():
+        logger.error("Plist directory does not exist or is not a directory: {}", directory_path)
+        return []
+        
+    plist_files = list(dir_path.glob("*.plist"))
+    logger.info("Found {} plist files in directory: {}", len(plist_files), directory_path)
+    
+    for plist_path in plist_files:
+        try:
+            with plist_path.open("rb") as f:
+                airtags.append(FindMyAccessory.from_plist(f))
+        except Exception as e:
+            logger.error("Failed to load plist file {}: {}", plist_path, str(e))
+            
+    return airtags
+
+
 def bridge() -> None:
     """
     Main loop fetching location data from the Apple API and forwarding it to a Traccar server.
@@ -74,17 +107,13 @@ def bridge() -> None:
     """
 
     private_keys = [k for k in (os.environ.get("BRIDGE_PRIVATE_KEYS") or "").split(",") if k]
-    plist_paths = [p for p in (os.environ.get("BRIDGE_PLIST_PATHS") or "").split(",") if p]
-    if len(private_keys) + len(plist_paths) == 0:
-        raise ValueError("env variable BRIDGE_PRIVATE_KEYS and/or BRIDGE_PLIST_PATHS must be set")
+    plist_dir = os.environ.get("BRIDGE_PLIST_DIR")
+    
+    if not private_keys and not plist_dir:
+        raise ValueError("Either env variable BRIDGE_PRIVATE_KEYS or BRIDGE_PLIST_DIR must be set")
 
-    real_airtags = []
-    for plist in plist_paths:
-        try:
-            with Path(plist).open("rb") as f:
-                real_airtags.append(FindMyAccessory.from_plist(f))
-        except Exception as e:
-            logger.error("Failed to load plist file {}: {}", plist, str(e))
+    haystack_keys = [KeyPair.from_b64(key) for key in private_keys]
+    real_airtags = load_airtags_from_directory(plist_dir)
 
     TRACCAR_SERVER = os.environ["BRIDGE_TRACCAR_SERVER"]
 

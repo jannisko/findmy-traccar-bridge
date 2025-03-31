@@ -32,8 +32,13 @@ services:
     build: https://github.com/jannisko/findmy-traccar-bridge.git
     volumes:
       - ./:/bridge/data
+      # Optional: Mount a directory with plist files for AirTags
+      - /path/to/your/plists:/bridge/plists
     environment:
+      # Either use BRIDGE_PRIVATE_KEYS for OpenHaystack beacons
       BRIDGE_PRIVATE_KEYS: "<key1>,<key2>,..."
+      # Or use BRIDGE_PLIST_DIR for AirTags (or use both)
+      # BRIDGE_PLIST_DIR: "/bridge/plists"
       BRIDGE_TRACCAR_SERVER: "<your traccar base url>:5055"
 ```
 
@@ -87,8 +92,8 @@ docker compose exec bridge .venv/bin/findmy-traccar-bridge-init
 
 The script can be configured via the following environment variables:
 
-- `BRIDGE_PRIVATE_KEYS` - required (unless `BRIDGE_PLIST_PATHS` is set) - comma separated string of base64 encoded private keys of your beacons (e.g. can be generated via instructions from [macless-haystack](https://github.com/dchristl/macless-haystack?tab=readme-ov-file#hardware-setup))
-- `BRIDGE_PLIST_PATHS` - required (unless `BRIDGE_PRIVATE_KEYS` is set) - comma separated full paths to [decrypted plist files](https://github.com/malmeloo/FindMy.py/issues/31).
+- `BRIDGE_PRIVATE_KEYS` - required (unless `BRIDGE_PLIST_DIR` is set) - comma separated string of base64 encoded private keys of your beacons (e.g. can be generated via instructions from [macless-haystack](https://github.com/dchristl/macless-haystack?tab=readme-ov-file#hardware-setup))
+- `BRIDGE_PLIST_DIR` - required (unless `BRIDGE_PRIVATE_KEYS` is set) - directory path containing [decrypted plist files](https://github.com/malmeloo/FindMy.py/issues/31) for AirTags and MFA-compliant clones. All files with .plist extension in this directory will be loaded.
 - `BRIDGE_TRACCAR_SERVER` - required - url to your traccar server
 - `BRIDGE_ANISETTE_SERVER` - optional (default: `https://ani.sidestore.io`) - url to the anisette server used for login
 - `BRIDGE_POLL_INTERVAL` - optional (default: 3600 (60 minutes)) - time to wait between querying the apple API. Too frequent polling might get your account banned.
