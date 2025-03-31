@@ -35,10 +35,10 @@ services:
       # Optional: Mount a directory with plist files for AirTags
       - /path/to/your/plists:/bridge/plists
     environment:
-      # Either use BRIDGE_PRIVATE_KEYS for OpenHaystack beacons
+      # For OpenHaystack beacons, specify their private keys
       BRIDGE_PRIVATE_KEYS: "<key1>,<key2>,..."
-      # Or use BRIDGE_PLIST_DIR for AirTags (or use both)
-      # BRIDGE_PLIST_DIR: "/bridge/plists"
+      # Optional: Override the default directory for plist files
+      # BRIDGE_PLIST_DIR: "/some/other/path"
       BRIDGE_TRACCAR_SERVER: "<your traccar base url>:5055"
 ```
 
@@ -48,9 +48,11 @@ services:
   ```shell
   docker build -t findmy-traccar-bridge https://github.com/jannisko/findmy-traccar-bridge.git
   docker run -d --name bridge \
-  -v ./:/data
-  -e BRIDGE_PRIVATE_KEYS="<key1>,<key2>,..."
-  -e BRIDGE_TRACCAR_URL="<your traccar base url>"
+  -v ./:/data \
+  # Optional: Mount directory with plist files for AirTags
+  -v /path/to/your/plists:/bridge/plists \
+  -e BRIDGE_PRIVATE_KEYS="<key1>,<key2>,..." \
+  -e BRIDGE_TRACCAR_URL="<your traccar base url>" \
   findmy-traccar-bridge
   ```
 </details>
@@ -59,7 +61,13 @@ services:
   <summary>as a python package</summary>
 
   ```shell
+  # Set up environment variables
   export BRIDGE_PRIVATE_KEYS="<key1>,<key2>,..." BRIDGE_TRACCAR_SERVER="<your traccar base url>"
+  # If you want to use AirTags through plist files, they'll be detected automatically in /bridge/plists
+  # Optionally you can override the plist directory:
+  # export BRIDGE_PLIST_DIR="/path/to/your/plists"
+  
+  # Run the bridge
   uvx --from=git+https://github.com/jannisko/findmy-traccar-bridge findmy-traccar-bridge
   ```
 </details>
@@ -92,8 +100,8 @@ docker compose exec bridge .venv/bin/findmy-traccar-bridge-init
 
 The script can be configured via the following environment variables:
 
-- `BRIDGE_PRIVATE_KEYS` - required (unless `BRIDGE_PLIST_DIR` is set) - comma separated string of base64 encoded private keys of your beacons (e.g. can be generated via instructions from [macless-haystack](https://github.com/dchristl/macless-haystack?tab=readme-ov-file#hardware-setup))
-- `BRIDGE_PLIST_DIR` - required (unless `BRIDGE_PRIVATE_KEYS` is set) - directory path containing [decrypted plist files](https://github.com/malmeloo/FindMy.py/issues/31) for AirTags and MFA-compliant clones. All files with .plist extension in this directory will be loaded.
+- `BRIDGE_PRIVATE_KEYS` - comma separated string of base64 encoded private keys of your OpenHaystack beacons (e.g. can be generated via instructions from [macless-haystack](https://github.com/dchristl/macless-haystack?tab=readme-ov-file#hardware-setup))
+- `BRIDGE_PLIST_DIR` - (optional) override the default directory path for [decrypted plist files](https://github.com/malmeloo/FindMy.py/issues/31). By default, the app will look for .plist files in `/bridge/plists`. Only set this if you need to use a different location.
 - `BRIDGE_TRACCAR_SERVER` - required - url to your traccar server
 - `BRIDGE_ANISETTE_SERVER` - optional (default: `https://ani.sidestore.io`) - url to the anisette server used for login
 - `BRIDGE_POLL_INTERVAL` - optional (default: 3600 (60 minutes)) - time to wait between querying the apple API. Too frequent polling might get your account banned.

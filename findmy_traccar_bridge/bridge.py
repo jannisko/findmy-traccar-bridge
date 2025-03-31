@@ -82,12 +82,17 @@ def load_airtags_from_directory(directory_path: str | None) -> list[FindMyAccess
     airtags = []
     dir_path = Path(directory_path)
     
+    if not dir_path.exists():
+        # Only log as error if it's not the default path
+        if directory_path != "/bridge/plists":
+            logger.error("Plist directory does not exist: {}", directory_path)
+        return []
+    
     if not dir_path.is_dir():
-        logger.error("Plist directory does not exist or is not a directory: {}", directory_path)
+        logger.error("Plist path exists but is not a directory: {}", directory_path)
         return []
         
     plist_files = list(dir_path.glob("*.plist"))
-    logger.info("Found {} plist files in directory: {}", len(plist_files), directory_path)
     
     for plist_path in plist_files:
         try:
@@ -107,13 +112,21 @@ def bridge() -> None:
     """
 
     private_keys = [k for k in (os.environ.get("BRIDGE_PRIVATE_KEYS") or "").split(",") if k]
-    plist_dir = os.environ.get("BRIDGE_PLIST_DIR")
     
-    if not private_keys and not plist_dir:
-        raise ValueError("Either env variable BRIDGE_PRIVATE_KEYS or BRIDGE_PLIST_DIR must be set")
-
+    # Default plist directory location
+    default_plist_dir = "/bridge/plists"
+    
+    # Custom plist directory can override the default
+    plist_dir = os.environ.get("BRIDGE_PLIST_DIR", default_plist_dir)
+    
     haystack_keys = [KeyPair.from_b64(key) for key in private_keys]
     real_airtags = load_airtags_from_directory(plist_dir)
+    
+    if not private_keys and not real_airtags:
+        raise ValueError(
+            "No tracking devices configured. Either set BRIDGE_PRIVATE_KEYS environment variable "
+            "or mount a directory with .plist files to /bridge/plists"
+        )
 
     TRACCAR_SERVER = os.environ["BRIDGE_TRACCAR_SERVER"]
 
