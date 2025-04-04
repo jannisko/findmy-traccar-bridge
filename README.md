@@ -37,8 +37,6 @@ services:
     environment:
       # For OpenHaystack beacons, specify their private keys
       BRIDGE_PRIVATE_KEYS: "<key1>,<key2>,..."
-      # Optional: Override the default directory for plist files
-      # BRIDGE_PLIST_DIR: "/some/other/path"
       BRIDGE_TRACCAR_SERVER: "<your traccar base url>:5055"
       BRIDGE_ANISETTE_SERVER: "http://anisette:6969"
   anisette:
