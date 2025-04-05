@@ -9,6 +9,7 @@ from typing import TypedDict
 
 import requests
 from findmy import KeyPair
+from findmy import FindMyAccessory
 from findmy.reports import (
     AppleAccount,
     LoginState,
@@ -65,16 +66,67 @@ def commit(persistent_data: PersistentData) -> None:
     persistent_data_store.write_text(json.dumps(persistent_data))
 
 
+def load_airtags_from_directory(directory_path: str | None) -> list[FindMyAccessory]:
+    """
+    Load all FindMyAccessory objects from .plist files in the specified directory.
+    
+    Args:
+        directory_path: Path to the directory containing .plist files
+        
+    Returns:
+        List of loaded FindMyAccessory objects
+    """
+    if not directory_path:
+        return []
+        
+    airtags = []
+    dir_path = Path(directory_path)
+    
+    if not dir_path.exists():
+        # Only log as error if it's not the default path
+        if directory_path != "/bridge/plists":
+            logger.error("Plist directory does not exist: {}", directory_path)
+        return []
+    
+    if not dir_path.is_dir():
+        logger.error("Plist path exists but is not a directory: {}", directory_path)
+        return []
+        
+    plist_files = list(dir_path.glob("*.plist"))
+    
+    for plist_path in plist_files:
+        try:
+            with plist_path.open("rb") as f:
+                airtags.append(FindMyAccessory.from_plist(f))
+        except Exception as e:
+            logger.error("Failed to load plist file {}: {}", plist_path, str(e))
+            
+    return airtags
+
+
 def bridge() -> None:
     """
     Main loop fetching location data from the Apple API and forwarding it to a Traccar server.
 
     Callable via the binary `.venv/bin/findmy-traccar-bridge`
     """
-    if (private_keys_raw := os.environ.get("BRIDGE_PRIVATE_KEYS")) is None:
-        raise ValueError("env variable BRIDGE_PRIVATE_KEYS must be set")
 
-    private_keys = private_keys_raw.split(",")
+    private_keys = [k for k in (os.environ.get("BRIDGE_PRIVATE_KEYS") or "").split(",") if k]
+    
+    # Default plist directory location
+    default_plist_dir = "/bridge/plists"
+    
+    # Custom plist directory can override the default
+    plist_dir = os.environ.get("BRIDGE_PLIST_DIR", default_plist_dir)
+    
+    haystack_keys = [KeyPair.from_b64(key) for key in private_keys]
+    real_airtags = load_airtags_from_directory(plist_dir)
+    
+    if not private_keys and not real_airtags:
+        raise ValueError(
+            "No tracking devices configured. Either set BRIDGE_PRIVATE_KEYS environment variable "
+            "or mount a directory with .plist files to /bridge/plists"
+        )
 
     TRACCAR_SERVER = os.environ["BRIDGE_TRACCAR_SERVER"]
 
@@ -96,13 +148,23 @@ def bridge() -> None:
         "Successfully loaded Apple account token with uid {}...", acc._asyncacc._uid[:4]
     )
 
-    keys = [KeyPair.from_b64(key) for key in private_keys]
+    haystack_keys = [KeyPair.from_b64(key) for key in private_keys]
 
-    logger.info(
-        "Successfully parsed private keys for {} device{}",
-        len(keys),
-        "" if len(keys) == 1 else "s",
-    )
+    logger.info("Configured {} device{}:",
+                len(haystack_keys) + len(real_airtags),
+                "" if len(real_airtags) == 1 else "s")
+    for key in haystack_keys:
+        logger.info(
+            "   Haystack device\t| Private key: {}[...]\t\t|\tTraccar ID {}",
+            key.hashed_adv_key_b64[:16],
+            int.from_bytes(key.hashed_adv_key_bytes) % 1_000_000
+        )
+    for airtag in real_airtags:
+        logger.info(
+            "   FindMy device\t\t| plist identifier: {}[...]\t|\tTraccar ID {}",
+            airtag.identifier[:16],
+            int.from_bytes(airtag.identifier.encode()) % 1_000_000
+        )
 
     persistent_data: PersistentData = json.loads(persistent_data_store.read_text())
     last_traccar_push_timestamp = 0  # not super important, so not persistent
@@ -149,21 +211,33 @@ def bridge() -> None:
                 for location in persistent_data["pending_locations"]
             }
 
-            result = acc.fetch_last_reports(keys)
+            result = acc.fetch_last_reports(haystack_keys)
+            for airtag in real_airtags:
+                result[airtag.identifier] = acc.fetch_last_reports(airtag)
+
             persistent_data["last_apple_api_call"] = int(
                 datetime.datetime.now().timestamp()
             )
             commit(persistent_data)
 
             for key, reports in result.items():
-                # traccar expects unique int ids for each device
-                traccar_id = int.from_bytes(key.hashed_adv_key_bytes) % 1_000_000
+                # Traccar expects unique int ids for each device. How we get it depends on the accessory type.
+                if isinstance(key, str):
+                    # The result set belongs to a "real" FindMy accessory, so we will get many Keypairs
+                    # back due to key rotation. Let's identify using the exported `identifier`
+                    traccar_id = int.from_bytes(key.encode()) % 1_000_000
+                    shorthand = key
+                else:
+                    # The result set belongs to a Haystack accessory, so we the keypair is stable. We
+                    # will use that as an identifier.
+                    traccar_id = int.from_bytes(key.hashed_adv_key_bytes) % 1_000_000
+                    shorthand = key.hashed_adv_key_b64[:8]
 
                 logger.info(
                     "Received {} locations from device:{} ({}...) from Apple",
                     len(reports),
                     traccar_id,
-                    key.hashed_adv_key_b64[:8],
+                    shorthand,
                 )
 
                 transformed_reports = [
@@ -191,7 +265,7 @@ def bridge() -> None:
                     "Queued up {} locations from device:{} ({}...) for upload (deduplicated)",
                     len(deduplicated_locations),
                     traccar_id,
-                    key.hashed_adv_key_b64[:8],
+                    shorthand,
                 )
 
             logger.info(

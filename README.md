@@ -12,7 +12,7 @@ of your custom tracking beacons from Apple's FindMy network.
 ## Requirements
 
 - Docker or Python 3.12
-- Some OpenHaystack beacons generating data
+- Some OpenHaystack beacons generating data, or [decrypted plist files](https://github.com/malmeloo/FindMy.py/issues/31) for real Airtags
   - e.g. an [esp32](https://github.com/dchristl/macless-haystack/blob/main/firmware/ESP32/README.md) or [NRF51](https://github.com/dchristl/macless-haystack/blob/main/firmware/nrf5x/README.md)
   - I recommend following the instructions `2. Hardware setup` from [macless-haystack](https://github.com/dchristl/macless-haystack?tab=readme-ov-file#setup). This is also where you will generate the private key for later.
 - Access to an Apple account with 2FA enabled
@@ -32,7 +32,10 @@ services:
     build: https://github.com/jannisko/findmy-traccar-bridge.git
     volumes:
       - ./:/bridge/data
+      # Optional: Mount a directory with plist files for AirTags
+      - /path/to/your/plists:/bridge/plists
     environment:
+      # For OpenHaystack beacons, specify their private keys
       BRIDGE_PRIVATE_KEYS: "<key1>,<key2>,..."
       BRIDGE_TRACCAR_SERVER: "<your traccar base url>:5055"
       BRIDGE_ANISETTE_SERVER: "http://anisette:6969"
@@ -56,6 +59,8 @@ volumes:
   dadoum/anisette-v3-server
   docker run -d --name bridge \
   -v ./:/data \
+  # Optional: Mount directory with plist files for AirTags
+  -v /path/to/your/plists:/bridge/plists \
   --network bridge_net \
   -e BRIDGE_PRIVATE_KEYS="<key1>,<key2>,..." \
   -e BRIDGE_TRACCAR_SERVER="<your traccar base url>" \
@@ -68,8 +73,14 @@ volumes:
   <summary>as a python package</summary>
 
   ```shell
+  # Set up environment variables
   # you should probably start your own anisette server for this
   export BRIDGE_PRIVATE_KEYS="<key1>,<key2>,..." BRIDGE_TRACCAR_SERVER="<your traccar base url>"
+  # If you want to use AirTags through plist files, they'll be detected automatically in /bridge/plists
+  # Optionally you can override the plist directory:
+  # export BRIDGE_PLIST_DIR="/path/to/your/plists"
+  
+  # Run the bridge
   uvx --from=git+https://github.com/jannisko/findmy-traccar-bridge findmy-traccar-bridge
   ```
 </details>
@@ -102,7 +113,8 @@ docker compose exec bridge .venv/bin/findmy-traccar-bridge-init
 
 The script can be configured via the following environment variables:
 
-- `BRIDGE_PRIVATE_KEYS` - required - comma separated string of base64 encoded private keys of your beacons (e.g. can be generated via instructions from [macless-haystack](https://github.com/dchristl/macless-haystack?tab=readme-ov-file#hardware-setup))
+- `BRIDGE_PRIVATE_KEYS` - comma separated string of base64 encoded private keys of your OpenHaystack beacons (e.g. can be generated via instructions from [macless-haystack](https://github.com/dchristl/macless-haystack?tab=readme-ov-file#hardware-setup))
+- `BRIDGE_PLIST_DIR` - (optional) override the default directory path for [decrypted plist files](https://github.com/malmeloo/FindMy.py/issues/31). By default, the app will look for .plist files in `/bridge/plists`. Only set this if you need to use a different location.
 - `BRIDGE_TRACCAR_SERVER` - required - url to your traccar server
 - `BRIDGE_ANISETTE_SERVER` - optional (default: `https://ani.sidestore.io`) - url to the anisette server used for login
 - `BRIDGE_POLL_INTERVAL` - optional (default: 3600 (60 minutes)) - time to wait between querying the apple API. Too frequent polling might get your account banned.
