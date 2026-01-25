@@ -8,8 +8,7 @@ from pathlib import Path
 from typing import TypedDict
 
 import requests
-from findmy import KeyPair
-from findmy import FindMyAccessory
+from findmy import FindMyAccessory, KeyPair
 from findmy.reports import (
     AppleAccount,
     LoginState,
@@ -69,38 +68,38 @@ def commit(persistent_data: PersistentData) -> None:
 def load_airtags_from_directory(directory_path: str | None) -> list[FindMyAccessory]:
     """
     Load all FindMyAccessory objects from .plist files in the specified directory.
-    
+
     Args:
         directory_path: Path to the directory containing .plist files
-        
+
     Returns:
         List of loaded FindMyAccessory objects
     """
     if not directory_path:
         return []
-        
+
     airtags = []
     dir_path = Path(directory_path)
-    
+
     if not dir_path.exists():
         # Only log as error if it's not the default path
         if directory_path != "/bridge/plists":
             logger.error("Plist directory does not exist: {}", directory_path)
         return []
-    
+
     if not dir_path.is_dir():
         logger.error("Plist path exists but is not a directory: {}", directory_path)
         return []
-        
+
     plist_files = list(dir_path.glob("*.plist"))
-    
+
     for plist_path in plist_files:
         try:
             with plist_path.open("rb") as f:
                 airtags.append(FindMyAccessory.from_plist(f))
         except Exception as e:
             logger.error("Failed to load plist file {}: {}", plist_path, str(e))
-            
+
     return airtags
 
 
@@ -111,17 +110,19 @@ def bridge() -> None:
     Callable via the binary `.venv/bin/findmy-traccar-bridge`
     """
 
-    private_keys = [k for k in (os.environ.get("BRIDGE_PRIVATE_KEYS") or "").split(",") if k]
-    
+    private_keys = [
+        k for k in (os.environ.get("BRIDGE_PRIVATE_KEYS") or "").split(",") if k
+    ]
+
     # Default plist directory location
     default_plist_dir = "/bridge/plists"
-    
+
     # Custom plist directory can override the default
     plist_dir = os.environ.get("BRIDGE_PLIST_DIR", default_plist_dir)
-    
+
     haystack_keys = [KeyPair.from_b64(key) for key in private_keys]
     real_airtags = load_airtags_from_directory(plist_dir)
-    
+
     if not private_keys and not real_airtags:
         raise ValueError(
             "No tracking devices configured. Either set BRIDGE_PRIVATE_KEYS environment variable "
@@ -150,20 +151,22 @@ def bridge() -> None:
 
     haystack_keys = [KeyPair.from_b64(key) for key in private_keys]
 
-    logger.info("Configured {} device{}:",
-                len(haystack_keys) + len(real_airtags),
-                "" if len(real_airtags) == 1 else "s")
+    logger.info(
+        "Configured {} device{}:",
+        len(haystack_keys) + len(real_airtags),
+        "" if len(real_airtags) == 1 else "s",
+    )
     for key in haystack_keys:
         logger.info(
             "   Haystack device\t| Private key: {}[...]\t\t|\tTraccar ID {}",
             key.hashed_adv_key_b64[:16],
-            int.from_bytes(key.hashed_adv_key_bytes) % 1_000_000
+            int.from_bytes(key.hashed_adv_key_bytes) % 1_000_000,
         )
     for airtag in real_airtags:
         logger.info(
             "   FindMy device\t\t| plist identifier: {}[...]\t|\tTraccar ID {}",
             airtag.identifier[:16],
-            int.from_bytes(airtag.identifier.encode()) % 1_000_000
+            int.from_bytes(airtag.identifier.encode()) % 1_000_000,
         )
 
     persistent_data: PersistentData = json.loads(persistent_data_store.read_text())
