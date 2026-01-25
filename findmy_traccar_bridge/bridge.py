@@ -155,7 +155,7 @@ def bridge() -> None:
     )
     for key in haystack_keys:
         logger.info(
-            "   Haystack device\t| Private key: {}[...]\t\t|\tTraccar ID {}",
+            "   Haystack device\t| hashed adv key: {}[...]\t\t|\tTraccar ID {}",
             key.hashed_adv_key_b64[:16],
             int.from_bytes(key.hashed_adv_key_bytes) % 1_000_000,
         )
