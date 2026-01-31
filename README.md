@@ -38,13 +38,6 @@ services:
       # For OpenHaystack beacons, specify their private keys
       BRIDGE_PRIVATE_KEYS: "<key1>,<key2>,..."
       BRIDGE_TRACCAR_SERVER: "<your traccar base url>:5055"
-      BRIDGE_ANISETTE_SERVER: "http://anisette:6969"
-  anisette:
-    image: dadoum/anisette-v3-server
-    volumes:
-      - anisette_data:/home/Alcoholic/.config/anisette-v3/lib/
-volumes:
-  anisette_data:
 ```
 
 <details>
@@ -52,19 +45,12 @@ volumes:
 
   ```shell
   docker build -t findmy-traccar-bridge https://github.com/jannisko/findmy-traccar-bridge.git
-  docker network create bridge_net
-  docker run -d --name anisette \
-  -v ./anisette:/home/Alcoholic/.config/anisette-v3/lib/ \
-  --network bridge_net \
-  dadoum/anisette-v3-server
   docker run -d --name bridge \
   -v ./:/data \
   # Optional: Mount directory with plist files for AirTags
   -v /path/to/your/plists:/bridge/plists \
-  --network bridge_net \
   -e BRIDGE_PRIVATE_KEYS="<key1>,<key2>,..." \
   -e BRIDGE_TRACCAR_SERVER="<your traccar base url>" \
-  -e BRIDGE_ANISETTE_SERVER="anisette:6969" \
   findmy-traccar-bridge
   ```
 </details>
@@ -116,12 +102,8 @@ The script can be configured via the following environment variables:
 - `BRIDGE_PRIVATE_KEYS` - comma separated string of base64 encoded private keys of your OpenHaystack beacons (e.g. can be generated via instructions from [macless-haystack](https://github.com/dchristl/macless-haystack?tab=readme-ov-file#hardware-setup))
 - `BRIDGE_PLIST_DIR` - (optional) override the default directory path for [decrypted plist files](https://github.com/malmeloo/FindMy.py/issues/31). By default, the app will look for .plist files in `/bridge/plists`. Only set this if you need to use a different location.
 - `BRIDGE_TRACCAR_SERVER` - required - url to your traccar server
-- `BRIDGE_ANISETTE_SERVER` - optional (default: `https://ani.sidestore.io`) - url to the anisette server used for login
 - `BRIDGE_POLL_INTERVAL` - optional (default: 3600 (60 minutes)) - time to wait between querying the apple API. Too frequent polling might get your account banned.
 - `BRIDGE_LOGGING_LEVEL` - optional (default: INFO)
-
-> [!TIP]
-> Self-hosting Anisette (and setting `BRIDGE_ANISETTE_SERVER`) is optional, but using the default value may cause issues with authentication. If you are getting repeated errors like `LoginState.REQUIRE_2FA`, this might be the culprit.
 
 ## Example
 
@@ -129,6 +111,7 @@ An example compose file running the bridge and Traccar locally can be found in t
 ```shell
 git clone https://github.com/jannisko/findmy-traccar-bridge
 cd findmy-traccar-bridge/testing
+# ... insert your haystack keys into the compose file ...
 docker compose up -d
 docker compose exec bridge .venv/bin/findmy-traccar-bridge-init
 ```
