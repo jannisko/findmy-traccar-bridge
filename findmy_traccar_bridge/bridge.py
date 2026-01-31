@@ -214,12 +214,19 @@ def bridge() -> None:
                 for location in persistent_data["pending_locations"]
             }
 
-            result = acc.fetch_location_history([*haystack_keys, *real_airtags])
-
-            persistent_data["last_apple_api_call"] = int(
-                datetime.datetime.now().timestamp()
-            )
-            commit(persistent_data)
+            try:
+                result = acc.fetch_location_history([*haystack_keys, *real_airtags])
+            except Exception as e:
+                # The api call could encounter any number of issues. For now we just catch them indiscriminantly.
+                # Over time, specific errors could be singled out if custom handling makes sense for them.
+                logger.error(f"Unhandled exeception while polling FindMy API: {e}")
+                continue
+            finally:
+                # no matter what happened, respect the timeout between api calls
+                persistent_data["last_apple_api_call"] = int(
+                    datetime.datetime.now().timestamp()
+                )
+                commit(persistent_data)
 
             for key, reports in result.items():
                 # Traccar expects unique int ids for each device. How we get it depends on the accessory type.
@@ -301,10 +308,18 @@ def bridge() -> None:
             failed_upload_locations = []
 
             for location in persistent_data["pending_locations"]:
-                resp = requests.post(
-                    TRACCAR_SERVER,
-                    data=location,
-                )
+                try:
+                    resp = requests.post(
+                        TRACCAR_SERVER,
+                        data=location,
+                    )
+                except Exception as e:
+                    # todo: refine error handlign per error type
+                    logger.error(
+                        f"Unexpected exception while pushing to Traccar API: {e}"
+                    )
+                    failed_upload_locations.append(location)
+                    continue
 
                 if resp.status_code == 200:
                     persistent_data["uploaded_locations"].append(location)
