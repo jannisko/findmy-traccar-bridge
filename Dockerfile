@@ -3,9 +3,9 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 WORKDIR /bridge
 
+COPY uv.lock pyproject.toml .
+
 RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=uv.lock,target=uv.lock,relabel=shared \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml,relabel=shared \
     uv sync --frozen --no-install-project --no-editable
 
 ADD . /bridge
