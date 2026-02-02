@@ -15,10 +15,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 FROM python:3.12-slim
 
-RUN adduser --system --no-create-home app
-USER app
 WORKDIR /bridge
 
-COPY --from=builder --chown=app /bridge/.venv /bridge/.venv
+COPY --from=builder /bridge/.venv /bridge/.venv
 
 CMD [".venv/bin/findmy-traccar-bridge"]

@@ -31,7 +31,7 @@ services:
   bridge:
     build: https://github.com/jannisko/findmy-traccar-bridge.git
     volumes:
-      - ./:/bridge/data
+      - ./data:/bridge/data
       # Optional: Mount a directory with plist files for AirTags
       - /path/to/your/plists:/bridge/plists
     environment:
