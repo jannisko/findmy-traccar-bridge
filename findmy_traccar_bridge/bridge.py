@@ -1,6 +1,5 @@
 import datetime
 from typing import List, Union, Dict
-import getpass
 import json
 import os
 import sys
@@ -19,22 +18,22 @@ from findmy.reports import (
 from findmy.reports.anisette import LocalAnisetteProvider
 from loguru import logger
 
+from .debug_utils import ReplayableReport, save_debug_result, load_debug_result
+
 logger.remove()
 logger.add(sys.stderr, level=os.environ.get("BRIDGE_LOGGING_LEVEL", "INFO"))
 
 from .device_utilities import DeviceManager, AppleAccountManager
-from .db_handling import LocationStorage, MetaDataServer, initDb
+from .db_handling import LocationServer, MetaDataServer, initDb
 from .endpoint_utilities import TraccarLocationPusher
 
 POLLING_INTERVAL = int(os.environ.get("BRIDGE_POLL_INTERVAL", 60 * 60))
-
 
 data_folder = Path("./data/")
 data_folder.mkdir(exist_ok=True)
 db_path = data_folder / "db.db"
 apple_account_path = data_folder / "account.json"
 anisette_libs_path = data_folder / "ani_libs.bin"
-
 
 def bridge() -> None:
     """
@@ -45,7 +44,7 @@ def bridge() -> None:
 
     session = initDb(db_path)
 
-    locationStorage = LocationStorage(session)
+    locationStorage = LocationServer(session)
     metaDataServer = MetaDataServer(session)
 
     #load haystack keys and findmy assessories
@@ -54,7 +53,7 @@ def bridge() -> None:
 
     # load apple account from directory
     appleAccountManager = AppleAccountManager(apple_account_path, anisette_libs_path, metaDataServer)
-    appleAccountManager.load_account()
+    appleAccountManager.loadLoginToken()
 
     # instanciate one traccar pusher for each key
     traccarLocationPushers: List[TraccarLocationPusher] = []
@@ -82,11 +81,12 @@ def bridge() -> None:
         # let  the account manager block the process until the polling intervall is over
         appleAccountManager.blockUntilNextPoll()
 
-        # after the waiting is over execute poll
-        newLocationDict: Dict[Union[KeyPair, FindMyAccessory], list]= appleAccountManager.executeApiPoll([*deviceManager.getHaystackKeys(), *deviceManager.getFindmyAsseccories])
+        newLocationDict: Dict[Union[KeyPair, FindMyAccessory], list]= appleAccountManager.executeApiPoll(deviceManager.getHaystackKeys(), deviceManager.getFindmyAsseccories())
+        # save_debug_result(newLocationDict, data_folder / "debug_locations.pkl", deviceManager.generateKeyId)
+        newLocationDict = load_debug_result(data_folder / "debug_locations.pkl") #TODO REMOVE TO TEST API POLLS
 
         for key, reports in newLocationDict.items():
-            keyId: int = deviceManager.generateKeyId(key)
+            keyId: int = key # deviceManager.generateKeyId(key)
             
             logger.info(
                     "Received {} locations from device:{} from Apples API",
@@ -97,7 +97,7 @@ def bridge() -> None:
             # add the new locations to the database
             for report in reports:
                 locationStorage.addLocation(keyId,
-                                            report.timestamp.timestamp(),
+                                            report.timestamp,
                                             report.latitude,
                                             report.longitude)
 
@@ -114,27 +114,6 @@ def init() -> None:
 
     Callable via the binary `.venv/bin/findmy-traccar-bridge-init`
     """
-    email = input("email?  > ")
-    password = getpass.getpass("passwd? > ")
 
-    acc = AppleAccount(LocalAnisetteProvider(libs_path=anisette_libs_path))
-    state = acc.login(email, password)
-
-    if state == LoginState.REQUIRE_2FA:
-        methods = acc.get_2fa_methods()
-
-        for i, method in enumerate(methods):
-            if isinstance(method, TrustedDeviceSecondFactorMethod):
-                print(f"{i} - Trusted Device")
-            elif isinstance(method, SmsSecondFactorMethod):
-                print(f"{i} - SMS ({method.phone_number})")
-
-        ind = int(input("Method? > "))
-
-        method = methods[ind]
-        method.request()
-        code = getpass.getpass("Code? > ")
-
-        method.submit(code)
-
-    acc.to_json(apple_account_path)
+    appleAccountManager = AppleAccountManager(apple_account_path, anisette_libs_path)
+    appleAccountManager.generateLoginToken()
