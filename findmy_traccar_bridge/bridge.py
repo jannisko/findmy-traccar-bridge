@@ -86,10 +86,10 @@ def bridge() -> None:
 
         newLocationDict: Dict[Union[KeyPair, FindMyAccessory], list]= appleAccountManager.executeApiPoll(deviceManager.getHaystackKeys(), deviceManager.getFindmyAsseccories())
         # save_debug_result(newLocationDict, data_folder / "debug_locations.pkl", deviceManager.generateKeyId)
-        newLocationDict = load_debug_result(data_folder / "debug_locations.pkl") #TODO REMOVE TO TEST API POLLS
+        # newLocationDict = load_debug_result(data_folder / "debug_locations.pkl") #TODO REMOVE TO TEST API POLLS
 
         for key, reports in newLocationDict.items():
-            keyId: int = key # deviceManager.generateKeyId(key)
+            keyId: int = deviceManager.generateKeyId(key)
             
             logger.info(
                     "Received {} locations from device:{} from Apples API",
@@ -100,7 +100,7 @@ def bridge() -> None:
             # add the new locations to the database
             for report in reports:
                 locationStorage.addLocation(keyId,
-                                            report.timestamp,
+                                            int(report.timestamp.timestamp()),
                                             report.latitude,
                                             report.longitude)
 

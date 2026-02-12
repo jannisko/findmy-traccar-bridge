@@ -156,8 +156,8 @@ class AppleAccountManager:
             The timestamp of the poll is stored in metadata regardless of success or failure.
         """
         try:
-            # result = self.appleAccount.fetch_location_history([*haystackKeys, *findmyAccessories]) #TODO REMOVE TO TEST API POLLS
-            result = dict()
+            result = self.appleAccount.fetch_location_history([*haystackKeys, *findmyAccessories]) #TODO REMOVE TO TEST API POLLS
+            # result = dict()
             logger.info(
                 "AppleAccountManager.executeApiPoll: API Polled successfully. Next Poll in {}s ({} UTC).",
                 self.pollingInterval,
