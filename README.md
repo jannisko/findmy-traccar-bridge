@@ -100,10 +100,10 @@ docker compose exec bridge .venv/bin/findmy-traccar-bridge-init
 The script can be configured via the following environment variables:
 
 - `BRIDGE_PRIVATE_KEYS` - comma separated string of base64 encoded private keys of your OpenHaystack beacons (e.g. can be generated via instructions from [macless-haystack](https://github.com/dchristl/macless-haystack?tab=readme-ov-file#hardware-setup))
-- `BRIDGE_PLIST_DIR` - (optional) override the default directory path for [decrypted plist files](https://github.com/malmeloo/FindMy.py/issues/31). By default, the app will look for .plist files in `/bridge/plists`. Only set this if you need to use a different location.
+- `BRIDGE_PLIST_PATH` - (optional) override the default directory path for [decrypted plist files](https://github.com/malmeloo/FindMy.py/issues/31). By default, the app will look for .plist files in `/bridge/plists`. Only set this if you need to use a different location.
 - `BRIDGE_TRACCAR_SERVER` - required - url to your traccar server
-- `BRIDGE_POLL_INTERVAL` - optional (default: 3600 (60 minutes)) - time to wait between querying the apple API. Too frequent polling might get your account banned.
-- `BRIDGE_LOGGING_LEVEL` - optional (default: INFO)
+- `BRIDGE_POLL_INTERVAL` - (optional, default: 3600 (60 minutes)) - time to wait between querying the apple API. Too frequent polling might get your account banned.
+- `BRIDGE_LOGGING_LEVEL` - (optional, default: INFO)
 
 ## Example
 
@@ -115,3 +115,7 @@ cd findmy-traccar-bridge/testing
 docker compose up -d
 docker compose exec bridge .venv/bin/findmy-traccar-bridge-init
 ```
+
+## Development Docs
+The current codebase provides a simple and extensible way to integrate bridge functionality with other services, such as Nextcloud Maps or Nextcloud Contacts.
+The [`LocationPusher`](findmy_traccar_bridge/endpoint_utilities.py) class implements the core functionality. To add support for another service, create a new pusher class that inherits from `LocationPusher` and override the `pushLocation()` method with the service-specific implementation.
