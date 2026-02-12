@@ -67,7 +67,7 @@ class LocationPusher(ABC):
             if self.pushLocation(location):
                 self.locationStorage.markAsPushed(self.keyId, self.endpointId, location.timestamp)
 
-        logger.debug(f"Finished pushing attempts for key ID '{self.keyId}' to endpoint '{self.endpointUrl}'")
+        logger.debug(f"Finished pushing attempts for key ID '{self.keyId}' and endpoint '{self.endpointUrl}'")
 
 
 class TraccarLocationPusher(LocationPusher):
@@ -90,7 +90,7 @@ class TraccarLocationPusher(LocationPusher):
 
         super().__init__(endpointUrl, keyId, locationStorage)
 
-        logger.info(f"Created TraccarLocationPusher for endpoint '{endpointUrl}'")
+        logger.info(f"Succesfully created TraccarLocationPusher for endpoint '{endpointUrl}' and keyID '{keyId}'")
 
 
     def pushLocation(self, location: Location) -> bool:
@@ -114,9 +114,9 @@ class TraccarLocationPusher(LocationPusher):
 
         try:
             # send request to traccar server
-            resp = requests.post("https://" + self.endpointUrl, data=payload, timeout=5)
+            resp = requests.post("https://" + self.endpointUrl, data=payload)
             resp.raise_for_status()  # will raise an exception if status is 4xx or 5xx
-            logger.debug(f"TraccarLocationPusher.pushLocation: Pushed location {payload}, key ID {self.keyId}, successfully to {self.endpointUrl}")
+            logger.debug(f"Pushed location {payload}, key ID {self.keyId}, successfully to {self.endpointUrl}")
             return True
         except requests.RequestException as e:
             logger.warning(f"Failed to push location {payload}, key ID {self.keyId}, to {self.endpointUrl}: {e}")

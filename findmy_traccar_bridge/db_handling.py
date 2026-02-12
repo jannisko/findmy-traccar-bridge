@@ -207,14 +207,12 @@ class LocationServer:
         try:
             self.session.commit()
             logger.debug(
-                f"Marked timestamp {timestamp} as pushed "
-                f"for key {keyId} to endpoint {endpointId}"
+                f"Marked timestamp {timestamp} as pushed for key {keyId} and endpoint {endpointId}"
             )
         except IntegrityError:
             self.session.rollback()
             logger.debug(
-                f"Timestamp {timestamp} already marked as pushed "
-                f"for key {keyId} to endpoint {endpointId}; rolling back"
+                f"Timestamp {timestamp} already marked as pushed for key {keyId} and endpoint {endpointId}; rolling back"
             )
 
 def initDb(db_path: str) -> Session:

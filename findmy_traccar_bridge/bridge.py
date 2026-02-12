@@ -1,24 +1,12 @@
-import datetime
 from typing import List, Union, Dict
-import json
 import os
 import sys
-import time
 from pathlib import Path
-from typing import TypedDict
 
-import requests
 from findmy import FindMyAccessory, KeyPair
-from findmy.reports import (
-    AppleAccount,
-    LoginState,
-    SmsSecondFactorMethod,
-    TrustedDeviceSecondFactorMethod,
-)
-from findmy.reports.anisette import LocalAnisetteProvider
 from loguru import logger
 
-from .debug_utils import ReplayableReport, save_debug_result, load_debug_result
+from .debug_utils import save_debug_result, load_debug_result
 
 logger.remove()
 logger.add(sys.stderr, level=os.environ.get("BRIDGE_LOGGING_LEVEL", "INFO"))
@@ -26,8 +14,6 @@ logger.add(sys.stderr, level=os.environ.get("BRIDGE_LOGGING_LEVEL", "INFO"))
 from .device_utilities import DeviceManager, AppleAccountManager
 from .db_handling import LocationServer, MetaDataServer, initDb
 from .endpoint_utilities import TraccarLocationPusher
-
-POLLING_INTERVAL = int(os.environ.get("BRIDGE_POLL_INTERVAL", 60 * 60))
 
 data_folder = Path("./data/")
 data_folder.mkdir(exist_ok=True)
@@ -37,9 +23,26 @@ anisette_libs_path = data_folder / "ani_libs.bin"
 
 def bridge() -> None:
     """
-    Main loop fetching location data from the Apple API and forwarding it to a Traccar server.
+    Main bridge loop.
 
-    Callable via the binary `.venv/bin/findmy-traccar-bridge`
+    Fetches location data from Apple FindMy API and forwards it to the configured
+    Traccar server for all devices (Haystack keys and FindMy accessories).  
+    Uses a database to store locations and track which locations have been pushed.
+
+    Steps performed:
+        1. Initialize database session.
+        2. Load Haystack keys and FindMy accessories.
+        3. Load Apple account login token.
+        4. Instantiate Traccar location pushers for each device.
+        5. Enter infinite loop:
+            a. Wait until the polling interval has elapsed.
+            b. Fetch latest location reports from Apple API.
+            c. Store new locations in the database.
+            d. Push pending locations to Traccar endpoints.
+
+    Notes:
+        - Designed to be called via the CLI binary:
+            `.venv/bin/findmy-traccar-bridge`
     """
 
     session = initDb(db_path)
@@ -74,7 +77,7 @@ def bridge() -> None:
                                     )
                                 )
 
-    logger.info("Instanciated {} traccar pusher", len(traccarLocationPushers))
+    logger.info("Successfully created {} traccar pusher", len(traccarLocationPushers))
 
     while True:
 
@@ -110,9 +113,15 @@ def bridge() -> None:
 
 def init() -> None:
     """
-    One-time interactive login procedure to answer 2fa challenge and generate API token.
+    One-time interactive Apple login procedure.
 
-    Callable via the binary `.venv/bin/findmy-traccar-bridge-init`
+    Prompts user for email/password and handles two-factor authentication if required.
+    Stores the resulting login token for future automated polling.
+
+    Notes:
+        - Callable via the CLI binary:
+            `.venv/bin/findmy-traccar-bridge-init`
+        - Creates `account.json` in the data folder for future use.
     """
 
     appleAccountManager = AppleAccountManager(apple_account_path, anisette_libs_path)
