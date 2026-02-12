@@ -273,7 +273,7 @@ class DeviceManager:
         """
         Load FindMyAccessory objects from .plist files.
 
-        The directory is defined by the `BRIDGE_plistPath`
+        The directory is defined by the `BRIDGE_PLIST_PATH`
         environment variable (default: /bridge/plists).
 
         Returns:
@@ -286,7 +286,7 @@ class DeviceManager:
         #this function is mainly copied from the commit from Felix Bouleau
 
         #fetch directory
-        plistPath = Path(os.environ.get("BRIDGE_plistPath", self.defaultPlistDir))
+        plistPath = Path(os.environ.get("BRIDGE_PLIST_PATH", self.defaultPlistDir))
 
         if not plistPath.exists():
             logger.info("Plist directory does not exist: {}. No FindMy Accessories loaded", plistPath)
