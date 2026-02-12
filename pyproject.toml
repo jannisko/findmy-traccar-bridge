@@ -8,6 +8,7 @@ dependencies = [
     "findmy==0.9.8",
     "loguru>=0.7.3",
     "requests>=2.32.3",
+    "sqlalchemy>=2.0.46",
 ]
 
 [project.scripts]

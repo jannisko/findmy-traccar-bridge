@@ -1,384 +1,128 @@
-import datetime
-import getpass
-import json
+from typing import List, Union, Dict
 import os
 import sys
-import time
 from pathlib import Path
-from typing import TypedDict
 
-import requests
 from findmy import FindMyAccessory, KeyPair
-from findmy.reports import (
-    AppleAccount,
-    LoginState,
-    SmsSecondFactorMethod,
-    TrustedDeviceSecondFactorMethod,
-)
-from findmy.reports.anisette import LocalAnisetteProvider
 from loguru import logger
+
+from .debug_utils import save_debug_result, load_debug_result
 
 logger.remove()
 logger.add(sys.stderr, level=os.environ.get("BRIDGE_LOGGING_LEVEL", "INFO"))
 
-POLLING_INTERVAL = int(os.environ.get("BRIDGE_POLL_INTERVAL", 60 * 60))
-
+from .device_utilities import DeviceManager, AppleAccountManager
+from .db_handling import LocationServer, MetaDataServer, initDb
+from .endpoint_utilities import TraccarLocationPusher
 
 data_folder = Path("./data/")
 data_folder.mkdir(exist_ok=True)
-persistent_data_store = data_folder / "persistent_data.json"
-acc_store = data_folder / "account.json"
+db_path = data_folder / "db.db"
+apple_account_path = data_folder / "account.json"
 anisette_libs_path = data_folder / "ani_libs.bin"
-
-
-class Location(TypedDict):
-    id: int
-    timestamp: int
-    lat: float
-    lon: float
-
-
-class PersistentData(TypedDict):
-    # rejected locations by traccar (id has not been claimed by a user), will keep retrying to upload these
-    pending_locations: list[Location]
-    # recently uploaded locations used for deduplication
-    uploaded_locations: list[Location]
-    # unix timestamp
-    last_apple_api_call: int
-
-
-if not persistent_data_store.is_file():
-    persistent_data_store.write_text(
-        json.dumps(
-            PersistentData(
-                pending_locations=[],
-                uploaded_locations=[],
-                last_apple_api_call=0,
-            )
-        )
-    )
-
-
-def commit(persistent_data: PersistentData) -> None:
-    persistent_data_store.write_text(json.dumps(persistent_data))
-
-
-def load_airtags_from_directory(directory_path: str | None) -> list[FindMyAccessory]:
-    """
-    Load all FindMyAccessory objects from .plist files in the specified directory.
-
-    Args:
-        directory_path: Path to the directory containing .plist files
-
-    Returns:
-        List of loaded FindMyAccessory objects
-    """
-    if not directory_path:
-        return []
-
-    airtags = []
-    dir_path = Path(directory_path)
-
-    if not dir_path.exists():
-        # Only log as error if it's not the default path
-        if directory_path != "/bridge/plists":
-            logger.error("Plist directory does not exist: {}", directory_path)
-        return []
-
-    if not dir_path.is_dir():
-        logger.error("Plist path exists but is not a directory: {}", directory_path)
-        return []
-
-    plist_files = list(dir_path.glob("*.plist"))
-
-    for plist_path in plist_files:
-        try:
-            with plist_path.open("rb") as f:
-                airtags.append(FindMyAccessory.from_plist(f))
-        except Exception as e:
-            logger.error("Failed to load plist file {}: {}", plist_path, str(e))
-
-    return airtags
-
 
 def bridge() -> None:
     """
-    Main loop fetching location data from the Apple API and forwarding it to a Traccar server.
+    Main bridge loop.
 
-    Callable via the binary `.venv/bin/findmy-traccar-bridge`
+    Fetches location data from Apple FindMy API and forwards it to the configured
+    Traccar server for all devices (Haystack keys and FindMy accessories).  
+    Uses a database to store locations and track which locations have been pushed.
+
+    Steps performed:
+        1. Initialize database session.
+        2. Load Haystack keys and FindMy accessories.
+        3. Load Apple account login token.
+        4. Instantiate Traccar location pushers for each device.
+        5. Enter infinite loop:
+            a. Wait until the polling interval has elapsed.
+            b. Fetch latest location reports from Apple API.
+            c. Store new locations in the database.
+            d. Push pending locations to Traccar endpoints.
+
+    Notes:
+        - Designed to be called via the CLI binary:
+            `.venv/bin/findmy-traccar-bridge`
     """
 
-    private_keys = [
-        k for k in (os.environ.get("BRIDGE_PRIVATE_KEYS") or "").split(",") if k
-    ]
+    session = initDb(db_path)
 
-    # Default plist directory location
-    default_plist_dir = "/bridge/plists"
+    locationStorage = LocationServer(session)
+    metaDataServer = MetaDataServer(session)
 
-    # Custom plist directory can override the default
-    plist_dir = os.environ.get("BRIDGE_PLIST_DIR", default_plist_dir)
+    #load haystack keys and findmy assessories
+    deviceManager = DeviceManager()
+    deviceManager.loadDevices() #throws error if no keys are found
 
-    haystack_keys = [KeyPair.from_b64(key) for key in private_keys]
-    real_airtags = load_airtags_from_directory(plist_dir)
+    # load apple account from directory
+    appleAccountManager = AppleAccountManager(apple_account_path, anisette_libs_path, metaDataServer)
+    appleAccountManager.loadLoginToken()
 
-    if not private_keys and not real_airtags:
-        raise ValueError(
-            "No tracking devices configured. Either set BRIDGE_PRIVATE_KEYS environment variable "
-            "or mount a directory with .plist files to /bridge/plists"
-        )
+    # instanciate one traccar pusher for each key
+    traccarLocationPushers: List[TraccarLocationPusher] = []
 
-    TRACCAR_SERVER = os.environ["BRIDGE_TRACCAR_SERVER"]
+    for key in deviceManager.getHaystackKeys():
+        traccarLocationPushers.append(TraccarLocationPusher(
+                                        endpointUrl = os.environ["BRIDGE_TRACCAR_SERVER"],
+                                        keyId = deviceManager.generateHaystackId(key),
+                                        locationStorage = locationStorage
+                                    )
+                                )
+    
+    for key in deviceManager.getFindmyAsseccories():
+        traccarLocationPushers.append(TraccarLocationPusher(
+                                        endpointUrl = os.environ["BRIDGE_TRACCAR_SERVER"],
+                                        keyId = deviceManager.generateFindmyId(key),
+                                        locationStorage = locationStorage
+                                    )
+                                )
 
-    logger.info("Target Traccar server: {}", TRACCAR_SERVER)
-
-    if not acc_store.is_file():
-        logger.info(
-            "Login token file not found at '{}'. You must first generate it interactively via "
-            "`docker compose exec bridge .venv/bin/findmy-traccar-bridge-init`",
-            str(acc_store),
-        )
-        while not acc_store.is_file():
-            time.sleep(1)
-
-    acc = AppleAccount.from_json(acc_store, anisette_libs_path=anisette_libs_path)
-
-    logger.info(
-        "Successfully loaded Apple account token with uid {}...", acc._asyncacc._uid[:4]
-    )
-
-    haystack_keys = [KeyPair.from_b64(key) for key in private_keys]
-
-    logger.info(
-        "Configured {} device{}:",
-        len(haystack_keys) + len(real_airtags),
-        "" if len(real_airtags) == 1 else "s",
-    )
-    for key in haystack_keys:
-        logger.info(
-            "   Haystack device\t| hashed adv key: {}[...]\t\t|\tTraccar ID {}",
-            key.hashed_adv_key_b64[:16],
-            int.from_bytes(key.hashed_adv_key_bytes) % 1_000_000,
-        )
-    for index, airtag in enumerate(real_airtags):
-        assert airtag.identifier is not None, (
-            f"Airtag {index + 1} plist file lacks identifier info."
-        )
-        logger.info(
-            "   FindMy device\t\t| plist identifier: {}[...]\t|\tTraccar ID {}",
-            airtag.identifier[:16],
-            int.from_bytes(airtag.identifier.encode()) % 1_000_000,
-        )
-
-    persistent_data: PersistentData = json.loads(persistent_data_store.read_text())
-    last_traccar_push_timestamp = 0  # not super important, so not persistent
-
-    logger.info(
-        "Next Apple API polling in {} seconds ({} UTC)",
-        time_until_next := max(
-            0,
-            int(
-                -(
-                    datetime.datetime.now().timestamp()
-                    - persistent_data["last_apple_api_call"]
-                    - POLLING_INTERVAL
-                )
-            ),
-        ),
-        (
-            datetime.datetime.now() + datetime.timedelta(seconds=time_until_next)
-        ).isoformat(timespec="seconds"),
-    )
+    logger.info("Successfully created {} traccar pusher", len(traccarLocationPushers))
 
     while True:
-        # avoid calling the API too often, otherwise the account might be banned
-        # also makes sure to respect the interval if the process just restarted (e.g. in a bootloop)
-        time_until_next_apple_polling = -(
-            datetime.datetime.now().timestamp()
-            - persistent_data["last_apple_api_call"]
-            - POLLING_INTERVAL
-        )
-        time_until_next_traccar_push = -(
-            datetime.datetime.now().timestamp() - last_traccar_push_timestamp - 30
-        )
 
-        if time_until_next_apple_polling > 0 and time_until_next_traccar_push > 0:
-            # sleep short durations so that SIGTERM stops the container
-            time.sleep(1)
-        elif time_until_next_apple_polling <= 0:
-            already_uploaded = {
-                (location["id"], location["timestamp"])
-                for location in persistent_data["uploaded_locations"]
-            }
-            already_pending = {
-                (location["id"], location["timestamp"])
-                for location in persistent_data["pending_locations"]
-            }
+        # let  the account manager block the process until the polling intervall is over
+        appleAccountManager.blockUntilNextPoll()
 
-            try:
-                result = acc.fetch_location_history([*haystack_keys, *real_airtags])
-            except Exception as e:
-                # The api call could encounter any number of issues. For now we just catch them indiscriminantly.
-                # Over time, specific errors could be singled out if custom handling makes sense for them.
-                logger.error(f"Unhandled exeception while polling FindMy API: {e}")
-                continue
-            finally:
-                # no matter what happened, respect the timeout between api calls
-                persistent_data["last_apple_api_call"] = int(
-                    datetime.datetime.now().timestamp()
-                )
-                commit(persistent_data)
+        newLocationDict: Dict[Union[KeyPair, FindMyAccessory], list]= appleAccountManager.executeApiPoll(deviceManager.getHaystackKeys(), deviceManager.getFindmyAsseccories())
+        # save_debug_result(newLocationDict, data_folder / "debug_locations.pkl", deviceManager.generateKeyId)
+        # newLocationDict = load_debug_result(data_folder / "debug_locations.pkl") #TODO REMOVE TO TEST API POLLS
 
-            for key, reports in result.items():
-                # Traccar expects unique int ids for each device. How we get it depends on the accessory type.
-                if isinstance(key, FindMyAccessory):
-                    # The result set belongs to a "real" FindMy accessory, so we will get many Keypairs
-                    # back due to key rotation. Let's identify using the exported `identifier`
-                    assert key.identifier is not None, (
-                        "unreachable, should have been checked earlier"
-                    )
-                    traccar_id = int.from_bytes(key.identifier.encode()) % 1_000_000
-                    shorthand = key
-                elif isinstance(key, KeyPair):
-                    # The result set belongs to a Haystack accessory, so we the keypair is stable. We
-                    # will use that as an identifier.
-                    traccar_id = int.from_bytes(key.hashed_adv_key_bytes) % 1_000_000
-                    shorthand = key.hashed_adv_key_b64[:8]
-                else:
-                    raise TypeError(f"Unexpected device type returned: {type(key)}")
-
-                logger.info(
-                    "Received {} locations from device:{} ({}...) from Apple",
-                    len(reports),
-                    traccar_id,
-                    shorthand,
-                )
-
-                transformed_reports = [
-                    Location(
-                        id=traccar_id,
-                        lat=report.latitude,
-                        lon=report.longitude,
-                        timestamp=int(report.timestamp.timestamp()),
-                    )
-                    for report in reports
-                ]
-
-                # queue up new locations received from API without duplicating any
-                persistent_data["pending_locations"].extend(
-                    deduplicated_locations := [
-                        location
-                        for location in transformed_reports
-                        if (location["id"], location["timestamp"])
-                        not in already_uploaded
-                        and (location["id"], location["timestamp"])
-                        not in already_pending
-                    ]
-                )
-                logger.info(
-                    "Queued up {} locations from device:{} ({}...) for upload (deduplicated)",
-                    len(deduplicated_locations),
-                    traccar_id,
-                    shorthand,
-                )
-
+        for key, reports in newLocationDict.items():
+            keyId: int = deviceManager.generateKeyId(key)
+            
             logger.info(
-                "Next Apple API polling in {} seconds ({} UTC)",
-                int(
-                    -(
-                        datetime.datetime.now().timestamp()
-                        - persistent_data["last_apple_api_call"]
-                        - POLLING_INTERVAL
-                    )
-                ),
-                datetime.datetime.fromtimestamp(
-                    persistent_data["last_apple_api_call"] + POLLING_INTERVAL
-                ).isoformat(timespec="seconds"),
-            )
-
-            commit(persistent_data)
-
-        elif time_until_next_traccar_push <= 0:
-            if (count_locations := len(persistent_data["pending_locations"])) > 0:
-                logger.info(
-                    "Uploading {} locations to traccar ({})",
-                    count_locations,
-                    TRACCAR_SERVER,
+                    "Received {} locations from device:{} from Apples API",
+                    len(reports),
+                    keyId,
                 )
 
-            failed_upload_locations = []
+            # add the new locations to the database
+            for report in reports:
+                locationStorage.addLocation(keyId,
+                                            int(report.timestamp.timestamp()),
+                                            report.latitude,
+                                            report.longitude)
 
-            for location in persistent_data["pending_locations"]:
-                try:
-                    resp = requests.post(
-                        TRACCAR_SERVER,
-                        data=location,
-                    )
-                except Exception as e:
-                    # todo: refine error handlign per error type
-                    logger.error(
-                        f"Unexpected exception while pushing to Traccar API: {e}"
-                    )
-                    failed_upload_locations.append(location)
-                    continue
 
-                if resp.status_code == 200:
-                    persistent_data["uploaded_locations"].append(location)
-                else:
-                    if resp.status_code != 400:
-                        logger.warning(
-                            "Upload ({}, {}) failed with unexpected code {}",
-                            location["id"],
-                            location["timestamp"],
-                            resp.status_code,
-                        )
-                        logger.debug("API returned {}", resp.text)
-                    # device id has not been claimed yet in the traccar UI. remember to retry
-                    failed_upload_locations.append(location)
+        # after new locations are added to the database, call the objects that oush locations to endpoints
 
-            unique_failed_devices = {
-                location["id"] for location in failed_upload_locations
-            }
-            if len(unique_failed_devices) > 0:
-                logger.warning(
-                    "Failed to upload locations for devices {}. They might need to be claimed in the traccar UI first. "
-                    "Reupload will be attempted.",
-                    unique_failed_devices,
-                )
-
-            persistent_data["pending_locations"] = failed_upload_locations
-
-            last_traccar_push_timestamp = datetime.datetime.now().timestamp()
-
-            commit(persistent_data)
+        for traccarLocationPusher in traccarLocationPushers:
+            traccarLocationPusher.pushPendingLocations()
 
 
 def init() -> None:
     """
-    One-time interactive login procedure to answer 2fa challenge and generate API token.
+    One-time interactive Apple login procedure.
 
-    Callable via the binary `.venv/bin/findmy-traccar-bridge-init`
+    Prompts user for email/password and handles two-factor authentication if required.
+    Stores the resulting login token for future automated polling.
+
+    Notes:
+        - Callable via the CLI binary:
+            `.venv/bin/findmy-traccar-bridge-init`
+        - Creates `account.json` in the data folder for future use.
     """
-    email = input("email?  > ")
-    password = getpass.getpass("passwd? > ")
 
-    acc = AppleAccount(LocalAnisetteProvider(libs_path=anisette_libs_path))
-    state = acc.login(email, password)
-
-    if state == LoginState.REQUIRE_2FA:
-        methods = acc.get_2fa_methods()
-
-        for i, method in enumerate(methods):
-            if isinstance(method, TrustedDeviceSecondFactorMethod):
-                print(f"{i} - Trusted Device")
-            elif isinstance(method, SmsSecondFactorMethod):
-                print(f"{i} - SMS ({method.phone_number})")
-
-        ind = int(input("Method? > "))
-
-        method = methods[ind]
-        method.request()
-        code = getpass.getpass("Code? > ")
-
-        method.submit(code)
-
-    acc.to_json(acc_store)
+    appleAccountManager = AppleAccountManager(apple_account_path, anisette_libs_path)
+    appleAccountManager.generateLoginToken()

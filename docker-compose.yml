@@ -1,0 +1,8 @@
+
+services:
+  findmy-traccar-bridge:
+    build: .
+    environment:
+      - BRIDGE_TRACCAR_SERVER="traccar.test.xyz
+      - BRIDGE_PRIVATE_KEYS="xxx"
+
