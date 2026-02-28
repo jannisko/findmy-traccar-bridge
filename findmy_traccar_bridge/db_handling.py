@@ -24,18 +24,18 @@ class Location(Base):
     ORM model representing the locations of keys.
 
     Each location entry is uniquely identified by the combination
-    of `keyId` and `timestamp`.
+    of `key_id` and `timestamp`.
     """
     __tablename__ = "locations"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    keyId = Column(Integer, nullable=False)
+    key_id = Column(Integer, nullable=False)
     timestamp = Column(Integer, nullable=False)
     lat = Column(Float, nullable=False)
     lon = Column(Float, nullable=False)
 
     __table_args__ = (
-        UniqueConstraint("keyId", "timestamp", name="uix_id_timestamp"),
+        UniqueConstraint("key_id", "timestamp", name="uix_id_timestamp"),
     )
 
 class PushedLocation(Base):
@@ -43,20 +43,20 @@ class PushedLocation(Base):
     ORM model tracking which locations have already been pushed
     to specific endpoints.
 
-    Ensures that the same (keyId, endpointId, timestamp) combination
+    Ensures that the same (key_id, endpoint_id, timestamp) combination
     cannot be stored more than once.
     """
     __tablename__ = "pushed_locations"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    keyId = Column(Integer, nullable=False)
-    endpointId = Column(Integer, nullable=False)
+    key_id = Column(Integer, nullable=False)
+    endpoint_id = Column(Integer, nullable=False)
     timestamp = Column(Integer, nullable=False)
 
     __table_args__ = (
         UniqueConstraint(
-            "keyId",
-            "endpointId",
+            "key_id",
+            "endpoint_id",
             "timestamp",
             name="uix_key_endpoint_timestamp"
         ),
@@ -125,21 +125,21 @@ class LocationServer:
         """
         self.session = session
 
-    def add_location(self, keyId: int, timestamp: int, lat: float, lon: float) -> None:
+    def add_location(self, key_id: int, timestamp: int, lat: float, lon: float) -> None:
         """
         Store a new location entry.
 
-        If a location with the same (keyId, timestamp) already exists,
+        If a location with the same (key_id, timestamp) already exists,
         the operation is ignored.
 
         Args:
-            keyId: Identifier of the tracked key.
+            key_id: Identifier of the tracked key.
             timestamp: Unix timestamp of the location record.
             lat: Latitude coordinate.
             lon: Longitude coordinate.
         """
         location = Location(
-            keyId=keyId,
+            key_id=key_id,
             timestamp=timestamp,
             lat=lat,
             lon=lon
@@ -148,20 +148,20 @@ class LocationServer:
         self.session.add(location)
         try:
             self.session.commit()
-            logger.debug(f"Stored location: {keyId}, {timestamp}, {lat}, {lon}")
+            logger.debug(f"Stored location: {key_id}, {timestamp}, {lat}, {lon}")
         except IntegrityError:
             self.session.rollback()
-            logger.debug(f"Location already exists: {keyId}, {timestamp}")
+            logger.debug(f"Location already exists: {key_id}, {timestamp}")
 
 
-    def get_pending_locations(self, keyId: int, endpointId: int) -> list[Location]:
+    def get_pending_locations(self, key_id: int, endpoint_id: int) -> list[Location]:
         """
         Retrieve all locations for a given key that have not yet been
         pushed to a specific endpoint.
 
         Args:
-            keyId: Identifier of the tracked key.
-            endpointId: Identifier of the endpoint.
+            key_id: Identifier of the tracked key.
+            endpoint_id: Identifier of the endpoint.
 
         Returns:
             A list of `Location` objects ordered by timestamp
@@ -170,8 +170,8 @@ class LocationServer:
         pushed_exists = (
             self.session.query(PushedLocation)
             .filter(
-                PushedLocation.keyId == keyId,
-                PushedLocation.endpointId == endpointId,
+                PushedLocation.key_id == key_id,
+                PushedLocation.endpoint_id == endpoint_id,
                 PushedLocation.timestamp == Location.timestamp
             )
             .exists()
@@ -179,13 +179,13 @@ class LocationServer:
 
         return (
             self.session.query(Location)
-            .filter(Location.keyId == keyId)
+            .filter(Location.key_id == key_id)
             .filter(~pushed_exists)
             .order_by(Location.timestamp)
             .all()
         )
 
-    def mark_as_pushed(self, keyId: int, endpointId: int, timestamp: int) -> None:
+    def mark_as_pushed(self, key_id: int, endpoint_id: int, timestamp: int) -> None:
         """
         Mark a specific location timestamp as successfully pushed
         to an endpoint.
@@ -193,13 +193,13 @@ class LocationServer:
         If the entry already exists, the operation is ignored.
 
         Args:
-            keyId: Identifier of the tracked key.
-            endpointId: Identifier of the endpoint.
+            key_id: Identifier of the tracked key.
+            endpoint_id: Identifier of the endpoint.
             timestamp: Timestamp of the location that was pushed.
         """
         pushedLocation = PushedLocation(
-            keyId=keyId,
-            endpointId=endpointId,
+            key_id=key_id,
+            endpoint_id=endpoint_id,
             timestamp=timestamp
         )
 
@@ -207,12 +207,12 @@ class LocationServer:
         try:
             self.session.commit()
             logger.debug(
-                f"Marked timestamp {timestamp} as pushed for key {keyId} and endpoint {endpointId}"
+                f"Marked timestamp {timestamp} as pushed for key {key_id} and endpoint {endpoint_id}"
             )
         except IntegrityError:
             self.session.rollback()
             logger.debug(
-                f"Timestamp {timestamp} already marked as pushed for key {keyId} and endpoint {endpointId}; rolling back"
+                f"Timestamp {timestamp} already marked as pushed for key {key_id} and endpoint {endpoint_id}; rolling back"
             )
 
 def init_db(db_path: str) -> Session:
@@ -230,5 +230,5 @@ def init_db(db_path: str) -> Session:
     """
     engine = create_engine(f"sqlite:///{db_path}", echo=False, future=True)
     Base.metadata.create_all(engine)
-    SessionLocal = sessionmaker(bind=engine)
-    return SessionLocal()
+    Session_local = sessionmaker(bind=engine)
+    return Session_local()

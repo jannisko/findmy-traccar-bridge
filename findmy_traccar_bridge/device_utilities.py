@@ -26,23 +26,23 @@ class AppleAccountManager:
     limiting, and execution of location history fetch requests.
     """
 
-    def __init__(self, accountPath: Path, anisetteLibsPath: Path, metaDataServer: MetaDataServer = None):
+    def __init__(self, account_path: Path, anisette_libs_path: Path, metadata_server: MetaDataServer = None):
         """
         Initialize the AppleAccountManager.
 
         Args:
-            accountPath: Path to the stored Apple account login token JSON file.
-            anisetteLibsPath: Path to the Anisette libraries required for authentication.
-            metaDataServer: Optional MetaDataServer used to persist polling metadata.
+            account_path: Path to the stored Apple account login token JSON file.
+            anisette_libs_path: Path to the Anisette libraries required for authentication.
+            metadata_server: Optional MetaDataServer used to persist polling metadata.
         """
 
-        self.accountPath = accountPath
-        self.anisetteLibsPath = anisetteLibsPath
-        self.appleAccount = None
+        self.account_path = account_path
+        self.anisette_libs_path = anisette_libs_path
+        self.apple_account = None
 
-        self.metaDataServer = metaDataServer
+        self.metadata_server = metadata_server
 
-        self.pollingInterval = int(os.environ.get("BRIDGE_POLL_INTERVAL", 60 * 60)) # defaults to 60 * 60 seconds = 60 min
+        self.polling_interval = int(os.environ.get("BRIDGE_POLL_INTERVAL", 60 * 60)) # defaults to 60 * 60 seconds = 60 min
 
     def generate_login_token(self):
         """
@@ -56,11 +56,11 @@ class AppleAccountManager:
         email = input("email?  > ")
         password = getpass.getpass("passwd? > ")
 
-        self.appleAccount = AppleAccount(LocalAnisetteProvider(libs_path=self.anisetteLibsPath))
-        state = self.appleAccount.login(email, password)
+        self.apple_account = AppleAccount(LocalAnisetteProvider(libs_path=self.anisette_libs_path))
+        state = self.apple_account.login(email, password)
 
         if state == LoginState.REQUIRE_2FA:
-            methods = self.appleAccount.get_2fa_methods()
+            methods = self.apple_account.get_2fa_methods()
 
             for i, method in enumerate(methods):
                 if isinstance(method, TrustedDeviceSecondFactorMethod):
@@ -76,10 +76,10 @@ class AppleAccountManager:
 
             method.submit(code)
 
-        self.appleAccount.to_json(self.accountPath)
+        self.apple_account.to_json(self.account_path)
 
         logger.info("AppleAccount logged in successfully. Login token stored at '{}'",
-                    self.accountPath)
+                    self.account_path)
 
         
     def load_login_token(self):
@@ -91,13 +91,13 @@ class AppleAccountManager:
         """
 
         firstAttempt = True
-        while not self.accountPath.is_file():
+        while not self.account_path.is_file():
             
             if firstAttempt:
                 logger.info(
                 "AppleAccount login token file not found at '{}'. You must first generate it interactively via "
                 "`docker compose exec bridge .venv/bin/findmy-traccar-bridge-init`",
-                str(self.accountPath),
+                str(self.account_path),
                 )
 
                 firstAttempt = False
@@ -105,11 +105,11 @@ class AppleAccountManager:
             time.sleep(1)
         
         # load account
-        self.appleAccount = AppleAccount.from_json(self.accountPath)
+        self.apple_account = AppleAccount.from_json(self.account_path)
         
         logger.info(
             "Successfully loaded Apple account token with uid {}...",
-            self.appleAccount._asyncacc._uid[:4]
+            self.apple_account._asyncacc._uid[:4]
         )
     
     def block_until_next_poll(self):
@@ -120,33 +120,33 @@ class AppleAccountManager:
         that Apple API rate limits are respected.
         """
 
-        lastApiPollTime = int(self.metaDataServer.get_metadata(name = 'last_api_poll_time', default = "0"))
-        timeSinceLastPoll = int(datetime.datetime.now().timestamp()) - lastApiPollTime #time in seconds since last poll
+        last_api_poll_time = int(self.metadata_server.get_metadata(name = 'last_api_poll_time', default = "0"))
+        time_since_last_poll = int(datetime.datetime.now().timestamp()) - last_api_poll_time #time in seconds since last poll
 
-        timeToNextPoll = self.pollingInterval - timeSinceLastPoll
+        timeToNextPoll = self.polling_interval - time_since_last_poll
 
         logger.info("Loop will be blocked for {}s (until {} UTC) to avoid Apple API rate limitation violation.",
                     timeToNextPoll,
                     (datetime.datetime.now() + datetime.timedelta(seconds=timeToNextPoll)).isoformat(timespec="seconds"))
         
-        while self.pollingInterval > timeSinceLastPoll:
+        while self.polling_interval > time_since_last_poll:
             time.sleep(1) # sleep for 10 seconds so that SIGTERM stops the process
-            timeSinceLastPoll = int(datetime.datetime.now().timestamp()) - lastApiPollTime #time in seconds since last poll
+            time_since_last_poll = int(datetime.datetime.now().timestamp()) - last_api_poll_time #time in seconds since last poll
         
         logger.debug("Loop will be continued.")
         return
 
     def execute_api_poll(
         self,
-        haystackKeys: List[KeyPair],
-        findmyAccessories: List[FindMyAccessory],
+        haystack_keys: List[KeyPair],
+        findmy_accessories: List[FindMyAccessory],
     ) -> Dict[Union[KeyPair, FindMyAccessory], list] | None:
         """
         Fetch location history from the Apple Find My API.
 
         Args:
-            haystackKeys: List of Haystack KeyPair objects.
-            findmyAccessories: List of FindMyAccessory objects.
+            haystack_keys: List of Haystack KeyPair objects.
+            findmy_accessories: List of FindMyAccessory objects.
 
         Returns:
             A dictionary mapping each device (KeyPair or FindMyAccessory)
@@ -156,12 +156,12 @@ class AppleAccountManager:
             The timestamp of the poll is stored in metadata regardless of success or failure.
         """
         try:
-            result = self.appleAccount.fetch_location_history([*haystackKeys, *findmyAccessories]) #TODO REMOVE TO TEST API POLLS
+            result = self.apple_account.fetch_location_history([*haystack_keys, *findmy_accessories]) #TODO REMOVE TO TEST API POLLS
             # result = dict()
             logger.info(
                 "AppleAccountManager.execute_api_poll: API Polled successfully. Next Poll in {}s ({} UTC).",
-                self.pollingInterval,
-                (datetime.datetime.now() + datetime.timedelta(seconds=self.pollingInterval)).isoformat(timespec="seconds"),
+                self.polling_interval,
+                (datetime.datetime.now() + datetime.timedelta(seconds=self.polling_interval)).isoformat(timespec="seconds"),
             )
             return result
         except Exception as e:
@@ -170,7 +170,7 @@ class AppleAccountManager:
             logger.error(f"Unhandled exeception while polling FindMy API: {e}")
             return None
         finally:
-            self.metaDataServer.set_metadata(name = 'last_api_poll_time', value = str(int(datetime.datetime.now().timestamp())))
+            self.metadata_server.set_metadata(name = 'last_api_poll_time', value = str(int(datetime.datetime.now().timestamp())))
 
 class DeviceManager:
     """
@@ -187,9 +187,9 @@ class DeviceManager:
         Sets up internal device storage lists.
         """
     
-        self.defaultPlistDir = "/bridge/plists"
-        self.haystackKeys: List[KeyPair] = []
-        self.findmyKeys: List[FindMyAccessory] = []
+        self.default_plist_dir = "/bridge/plists"
+        self.haystack_keys: List[KeyPair] = []
+        self.findmy_keys: List[FindMyAccessory] = []
 
     def load_devices(self) -> None:
         """
@@ -200,8 +200,8 @@ class DeviceManager:
         devices are configured.
         """
 
-        self.haystackKeys = self.load_haystack_keys()
-        self.findmyKeys = self.load_findmy_keys()
+        self.haystack_keys = self.load_haystack_keys()
+        self.findmy_keys = self.load_findmy_keys()
 
         totalNumDevices = self.get_num_haystacks() + self.get_num_findmys()
         if (totalNumDevices) == 0:
@@ -221,7 +221,7 @@ class DeviceManager:
         Returns:
             List of KeyPair objects.
         """
-        return self.haystackKeys
+        return self.haystack_keys
     
     def get_findmy_accessories(self) -> List[FindMyAccessory]:
         """
@@ -231,21 +231,21 @@ class DeviceManager:
             List of FindMyAccessory objects.
         """
 
-        return self.findmyKeys
+        return self.findmy_keys
 
     def get_num_haystacks(self) -> int:
         """
         Return the number of loaded Haystack keys.
         """
 
-        return len(self.haystackKeys)
+        return len(self.haystack_keys)
     
     def get_num_findmys(self) -> int:
         """
         Return the number of loaded Find My accessories.
         """
 
-        return len(self.findmyKeys)
+        return len(self.findmy_keys)
     
     def load_haystack_keys(self) -> List[KeyPair]:
         """
@@ -262,12 +262,12 @@ class DeviceManager:
         keysList = [k for k in keysStr.split(",") if k]
 
         #generate haystack KeyPairs
-        haystackKeys = list()
+        haystack_keys = list()
 
         for key in keysList:
-            haystackKeys.append(KeyPair.from_b64(key))
+            haystack_keys.append(KeyPair.from_b64(key))
 
-        return haystackKeys
+        return haystack_keys
 
     def load_findmy_keys(self) -> List[FindMyAccessory]:
         """
@@ -286,28 +286,28 @@ class DeviceManager:
         #this function is mainly copied from the commit from Felix Bouleau
 
         #fetch directory
-        plistPath = Path(os.environ.get("BRIDGE_PLIST_PATH", self.defaultPlistDir))
+        plist_path = Path(os.environ.get("BRIDGE_PLIST_PATH", self.default_plist_dir))
 
-        if not plistPath.exists():
-            logger.info("Plist directory does not exist: {}. No FindMy Accessories loaded", plistPath)
+        if not plist_path.exists():
+            logger.info("Plist directory does not exist: {}. No FindMy Accessories loaded", plist_path)
             return []
 
-        if not plistPath.is_dir():
-            logger.error("Plist path exists but is not a directory: {}", plistPath)
+        if not plist_path.is_dir():
+            logger.error("Plist path exists but is not a directory: {}", plist_path)
             return []
 
         # load files from directory
-        plist_files = list(plistPath.glob("*.plist"))
-        findmyKeys: List[FindMyAccessory] = []
+        plist_files = list(plist_path.glob("*.plist"))
+        findmy_keys: List[FindMyAccessory] = []
 
         for plist_path in plist_files:
             try:
                 with plist_path.open("rb") as f:
-                    findmyKeys.append(FindMyAccessory.from_plist(f))
+                    findmy_keys.append(FindMyAccessory.from_plist(f))
             except Exception as e:
                 logger.error("Failed to load plist file {}: {}", plist_path, str(e))
         
-        return findmyKeys
+        return findmy_keys
 
     def generate_haystack_id(self, key: KeyPair) -> int:
         """
