@@ -62,7 +62,7 @@ class PushedLocation(Base):
         ),
     )
 
-class MetaDataServer:
+class MetaDataService:
     """
     Service class for managing metadata entries in the database.
     """
@@ -96,7 +96,7 @@ class MetaDataServer:
         entry.value = value
         self.session.commit()
 
-    def get_metadata(self, name: str, default: str = "") -> str | None:
+    def get_metadata(self, name: str, default: str = None) -> str | None:
         """
         Retrieve a metadata value by name.
 
@@ -108,9 +108,9 @@ class MetaDataServer:
             The stored metadata value, or `default` if not found.
         """
         entry = self.session.query(MetaData).filter_by(name=name).first()
-        return entry.value if entry else default
+        return entry.value if entry is not None else default
 
-class LocationServer:
+class LocationService:
     """
     Service class for storing and managing location records
     and tracking push status per endpoint.
@@ -214,6 +214,7 @@ class LocationServer:
             logger.debug(
                 f"Timestamp {timestamp} already marked as pushed for key {key_id} and endpoint {endpoint_id}; rolling back"
             )
+            logger.warning("A location was about to be marked as pushed repeatedly. This should never happen logically and indicates a bug.")
 
 def init_db(db_path: str) -> Session:
     """

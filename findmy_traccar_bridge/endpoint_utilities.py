@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
 import hashlib
+import datetime
 
-from .db_handling import LocationServer, Location
+from .db_handling import LocationService, Location
 import requests
 
 from loguru import logger
@@ -17,21 +18,24 @@ class LocationPusher(ABC):
     Attributes:
         endpoint_url (str): The URL of the endpoint to push locations to.
         key_id (int): The unique identifier of the device/key whose locations will be pushed.
-        location_storage (LocationServer): Storage backend to fetch pending locations from.
+        location_storage (LocationService): Storage backend to fetch pending locations from.
         endpoint_id (int): Computed unique integer ID for the endpoint (0-999,999).
     """
-    def __init__(self, endpoint_url: str, key_id: int, location_storage: LocationServer):
+    def __init__(self, endpoint_url: str, key_id: int, location_storage: LocationService, pushing_interval: int):
         """
         Initialize a LocationPusher.
 
         Args:
             endpoint_url: The URL of the endpoint.
             key_id: The device/key identifier.
-            location_storage: The LocationServer instance used to fetch pending locations.
+            location_storage: The LocationService instance used to fetch pending locations.
+            pushing_interval: interval between pushing attempts in seconds
         """
         self.endpoint_url = endpoint_url
         self.key_id = key_id
         self.location_storage = location_storage
+        self.pushing_interval = pushing_interval
+        self.last_push_time = 0
 
         # compute unique id between 0-999,999 based on endpoint url
         hashed = hashlib.sha256(endpoint_url.encode()).hexdigest()
@@ -51,15 +55,23 @@ class LocationPusher(ABC):
             True if the location was successfully pushed, False otherwise.
         """
         pass
+    
+    def ready_to_push(self) -> bool:
+        """
+        checks wheather the pushing interval has allready ellapsed since the last push and returns true if so, false otherwise 
+
+        """
+        time_since_last_poll = int(datetime.datetime.now().timestamp()) - self.last_push_time #time in seconds since last push
+        return self.pushing_interval < time_since_last_poll
+
 
     def push_pending_locations(self) -> None:
         """
         Push all locations that have not yet been pushed to this endpoint.
 
-        Fetches pending locations from the LocationServer and calls `push_location` on each.
+        Fetches pending locations from the LocationService and calls `push_location` on each.
         If successful, marks the location as pushed in the database.
         """
-
         pending_locations = self.location_storage.get_pending_locations(self.key_id, self.endpoint_id)
         logger.debug(f"Found {len(pending_locations)} pending locations for key {self.key_id} to push")
 
@@ -68,6 +80,8 @@ class LocationPusher(ABC):
                 self.location_storage.mark_as_pushed(self.key_id, self.endpoint_id, location.timestamp)
 
         logger.debug(f"Finished pushing attempts for key ID '{self.key_id}' and endpoint '{self.endpoint_url}'")
+
+        self.last_push_time = int(datetime.datetime.now().timestamp())
 
 
 class TraccarLocationPusher(LocationPusher):
@@ -78,17 +92,17 @@ class TraccarLocationPusher(LocationPusher):
         Inherits all attributes from LocationPusher.
     """
 
-    def __init__(self, endpoint_url: str, key_id: str, location_storage: LocationServer):
+    def __init__(self, endpoint_url: str, key_id: str, location_storage: LocationService, pushing_interval: int):
         """
         Initialize a TraccarLocationPusher.
 
         Args:
             endpoint_url: The Traccar server URL.
             key_id: The device/key identifier.
-            location_storage: The LocationServer instance used to fetch pending locations.
+            location_storage: The LocationService instance used to fetch pending locations.
         """
 
-        super().__init__(endpoint_url, key_id, location_storage)
+        super().__init__(endpoint_url, key_id, location_storage, pushing_interval)
 
         logger.info(f"Succesfully created TraccarLocationPusher for endpoint '{endpoint_url}' and keyID '{key_id}'")
 
@@ -118,6 +132,37 @@ class TraccarLocationPusher(LocationPusher):
             resp.raise_for_status()  # will raise an exception if status is 4xx or 5xx
             logger.debug(f"Pushed location {payload}, key ID {self.key_id}, successfully to {self.endpoint_url}")
             return True
+    
         except requests.RequestException as e:
-            logger.warning(f"Failed to push location {payload}, key ID {self.key_id}, to {self.endpoint_url}: {e}")
+
+            if isinstance(e, requests.Timeout):
+                reason = "connection timeout"
+
+            elif isinstance(e, requests.ConnectionError):
+                reason = "connection error"
+
+            elif isinstance(e, requests.HTTPError):
+                status = e.response.status_code
+
+                if 400 <= status < 500:
+                    reason = f"client error {status}"
+                elif 500 <= status < 600:
+                    reason = f"server error {status}"
+                else:
+                    reason = f"http error {status}"
+
+            else:
+                reason = "unexpected request error"
+
+            logger.warning(
+                "Failed to push location {}, key ID {}, to {} because of {}. "
+                "Is the key ID already claimed in the traccar UI? "
+                "Reupload will be attempted in {} seconds.",
+                payload,
+                self.key_id,
+                self.endpoint_url,
+                reason,
+                self.pushing_interval,
+            )
+
             return False

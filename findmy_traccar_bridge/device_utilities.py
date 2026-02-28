@@ -5,7 +5,7 @@ import time
 import datetime
 from pathlib import Path
 
-from findmy import FindMyAccessory, KeyPair
+from findmy import FindMyAccessory, KeyPair, LocationReport
 from findmy.reports import (
     AppleAccount,
     LoginState,
@@ -16,7 +16,7 @@ from findmy.reports.anisette import LocalAnisetteProvider
 from loguru import logger
 import getpass
 
-from .db_handling import MetaDataServer
+from .db_handling import MetaDataService
 
 class AppleAccountManager:
     """
@@ -26,19 +26,20 @@ class AppleAccountManager:
     limiting, and execution of location history fetch requests.
     """
 
-    def __init__(self, account_path: Path, anisette_libs_path: Path, metadata_server: MetaDataServer = None):
+    def __init__(self, account_path: Path, anisette_libs_path: Path, metadata_server: MetaDataService = None):
         """
         Initialize the AppleAccountManager.
 
         Args:
             account_path: Path to the stored Apple account login token JSON file.
             anisette_libs_path: Path to the Anisette libraries required for authentication.
-            metadata_server: Optional MetaDataServer used to persist polling metadata.
+            metadata_server: Optional MetaDataService used to persist polling metadata.
         """
 
         self.account_path = account_path
         self.anisette_libs_path = anisette_libs_path
         self.apple_account = None
+        self.display_poll_information = True
 
         self.metadata_server = metadata_server
 
@@ -51,7 +52,7 @@ class AppleAccountManager:
         Prompts the user for email and password, handles optional 2FA,
         and stores the resulting authenticated session in the data folder.
         """
-        logger.debug("Initiating AplleAccount login attempt.")
+        logger.debug("Initiating AppleAccount login attempt.")
 
         email = input("email?  > ")
         password = getpass.getpass("passwd? > ")
@@ -112,9 +113,9 @@ class AppleAccountManager:
             self.apple_account._asyncacc._uid[:4]
         )
     
-    def block_until_next_poll(self):
+    def safe_to_poll(self) -> bool:
         """
-        Block execution until the configured polling interval has elapsed.
+        checks wheather the polling interval has allready ellapsed since the last api poll and returns true if so, false otherwise 
 
         Uses the stored metadata value `last_api_poll_time` to ensure
         that Apple API rate limits are respected.
@@ -123,24 +124,23 @@ class AppleAccountManager:
         last_api_poll_time = int(self.metadata_server.get_metadata(name = 'last_api_poll_time', default = "0"))
         time_since_last_poll = int(datetime.datetime.now().timestamp()) - last_api_poll_time #time in seconds since last poll
 
-        timeToNextPoll = self.polling_interval - time_since_last_poll
+        if self.polling_interval > time_since_last_poll:
+            if self.display_poll_information:
+                time_to_next_poll = self.polling_interval - time_since_last_poll
+                logger.info("Next API poll in {}s (at {} UTC) to avoid Apple API rate limitation violation.",
+                            time_to_next_poll,
+                            (datetime.datetime.now() + datetime.timedelta(seconds=time_to_next_poll)).isoformat(timespec="seconds"))
+                self.display_poll_information = False
+            return False
 
-        logger.info("Loop will be blocked for {}s (until {} UTC) to avoid Apple API rate limitation violation.",
-                    timeToNextPoll,
-                    (datetime.datetime.now() + datetime.timedelta(seconds=timeToNextPoll)).isoformat(timespec="seconds"))
-        
-        while self.polling_interval > time_since_last_poll:
-            time.sleep(1) # sleep for 10 seconds so that SIGTERM stops the process
-            time_since_last_poll = int(datetime.datetime.now().timestamp()) - last_api_poll_time #time in seconds since last poll
-        
-        logger.debug("Loop will be continued.")
-        return
+        self.display_poll_information = True
+        return True
 
     def execute_api_poll(
         self,
         haystack_keys: List[KeyPair],
         findmy_accessories: List[FindMyAccessory],
-    ) -> Dict[Union[KeyPair, FindMyAccessory], list] | None:
+    ) -> Dict[Union[KeyPair, FindMyAccessory], list[LocationReport]] | None:
         """
         Fetch location history from the Apple Find My API.
 
@@ -156,8 +156,8 @@ class AppleAccountManager:
             The timestamp of the poll is stored in metadata regardless of success or failure.
         """
         try:
-            result = self.apple_account.fetch_location_history([*haystack_keys, *findmy_accessories]) #TODO REMOVE TO TEST API POLLS
-            # result = dict()
+            result = self.apple_account.fetch_location_history([*haystack_keys, *findmy_accessories])
+
             logger.info(
                 "AppleAccountManager.execute_api_poll: API Polled successfully. Next Poll in {}s ({} UTC).",
                 self.polling_interval,
