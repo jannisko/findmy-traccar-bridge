@@ -1,11 +1,12 @@
-from abc import ABC, abstractmethod
-import hashlib
 import datetime
+import hashlib
+from abc import ABC, abstractmethod
 
-from .db_handling import LocationService, Location
 import requests
-
 from loguru import logger
+
+from .db_handling import Location, LocationService
+
 
 # Abstract base class for endpoint pushers (e.g. classes that push location data to endpoints) - child classes must be implemented for the distinct endpoints (nextcloud, traccar, ...)
 class LocationPusher(ABC):
@@ -21,7 +22,14 @@ class LocationPusher(ABC):
         location_storage (LocationService): Storage backend to fetch pending locations from.
         endpoint_id (int): Computed unique integer ID for the endpoint (0-999,999).
     """
-    def __init__(self, endpoint_url: str, key_id: int, location_storage: LocationService, pushing_interval: int):
+
+    def __init__(
+        self,
+        endpoint_url: str,
+        key_id: int,
+        location_storage: LocationService,
+        pushing_interval: int,
+    ):
         """
         Initialize a LocationPusher.
 
@@ -36,10 +44,19 @@ class LocationPusher(ABC):
         self.location_storage = location_storage
         self.pushing_interval = pushing_interval
         self.last_push_time = 0
+        self.healthy = True
 
         # compute unique id between 0-999,999 based on endpoint url
         hashed = hashlib.sha256(endpoint_url.encode()).hexdigest()
         self.endpoint_id = int(hashed[:16], 16) % 1_000_000
+
+        if self.endpoint_url == "":
+            logger.error("Location pusher requires a valid url specified by BRIDGE_TRACCAR_SERVER. This pusher will remain inactive.")
+            self.healthy = False
+        
+        if self.endpoint_url.startswith("http"):
+            logger.error("BRIDGE_TRACCAR_SERVER must hold an url without the scheme specified (NO http(s) in the beginning). This pusher will remain inactiive.")
+            self.healthy = False
 
     @abstractmethod
     def push_location(self, location: Location) -> bool:
@@ -55,15 +72,16 @@ class LocationPusher(ABC):
             True if the location was successfully pushed, False otherwise.
         """
         pass
-    
+
     def ready_to_push(self) -> bool:
         """
-        checks wheather the pushing interval has allready ellapsed since the last push and returns true if so, false otherwise 
+        checks wheather the pushing interval has allready ellapsed since the last push and returns true if so, false otherwise
 
         """
-        time_since_last_poll = int(datetime.datetime.now().timestamp()) - self.last_push_time #time in seconds since last push
+        time_since_last_poll = (
+            int(datetime.datetime.now().timestamp()) - self.last_push_time
+        )  # time in seconds since last push
         return self.pushing_interval < time_since_last_poll
-
 
     def push_pending_locations(self) -> None:
         """
@@ -72,14 +90,26 @@ class LocationPusher(ABC):
         Fetches pending locations from the LocationService and calls `push_location` on each.
         If successful, marks the location as pushed in the database.
         """
-        pending_locations = self.location_storage.get_pending_locations(self.key_id, self.endpoint_id)
-        logger.debug(f"Found {len(pending_locations)} pending locations for key {self.key_id} to push")
+        if not self.healthy:
+            logger.debug("Pusher is unhealthy. No location pushing will be attempted.")
+            return
+        
+        pending_locations = self.location_storage.get_pending_locations(
+            self.key_id, self.endpoint_id
+        )
+        logger.debug(
+            f"Found {len(pending_locations)} pending locations for key {self.key_id} to push"
+        )
 
         for location in pending_locations:
             if self.push_location(location):
-                self.location_storage.mark_as_pushed(self.key_id, self.endpoint_id, location.timestamp)
+                self.location_storage.mark_as_pushed(
+                    self.key_id, self.endpoint_id, location.timestamp
+                )
 
-        logger.debug(f"Finished pushing attempts for key ID '{self.key_id}' and endpoint '{self.endpoint_url}'")
+        logger.debug(
+            f"Finished pushing attempts for key ID '{self.key_id}' and endpoint '{self.endpoint_url}'"
+        )
 
         self.last_push_time = int(datetime.datetime.now().timestamp())
 
@@ -92,7 +122,13 @@ class TraccarLocationPusher(LocationPusher):
         Inherits all attributes from LocationPusher.
     """
 
-    def __init__(self, endpoint_url: str, key_id: str, location_storage: LocationService, pushing_interval: int):
+    def __init__(
+        self,
+        endpoint_url: str,
+        key_id: str,
+        location_storage: LocationService,
+        pushing_interval: int,
+    ):
         """
         Initialize a TraccarLocationPusher.
 
@@ -104,8 +140,9 @@ class TraccarLocationPusher(LocationPusher):
 
         super().__init__(endpoint_url, key_id, location_storage, pushing_interval)
 
-        logger.info(f"Succesfully created TraccarLocationPusher for endpoint '{endpoint_url}' and keyID '{key_id}'")
-
+        logger.info(
+            f"Succesfully created TraccarLocationPusher for endpoint '{endpoint_url}' and keyID '{key_id}'"
+        )
 
     def push_location(self, location: Location) -> bool:
         """
@@ -120,21 +157,22 @@ class TraccarLocationPusher(LocationPusher):
 
         # create dictionay from Location that can be transformed into the required HTTP query
         payload = {
-            "id": location.key_id, 
+            "id": location.key_id,
             "timestamp": location.timestamp,
             "lat": location.lat,
-            "lon": location.lon
+            "lon": location.lon,
         }
 
         try:
             # send request to traccar server
             resp = requests.post("https://" + self.endpoint_url, data=payload)
             resp.raise_for_status()  # will raise an exception if status is 4xx or 5xx
-            logger.debug(f"Pushed location {payload}, key ID {self.key_id}, successfully to {self.endpoint_url}")
+            logger.debug(
+                f"Pushed location {payload}, key ID {self.key_id}, successfully to {self.endpoint_url}"
+            )
             return True
-    
-        except requests.RequestException as e:
 
+        except requests.RequestException as e:
             if isinstance(e, requests.Timeout):
                 reason = "connection timeout"
 

@@ -1,11 +1,10 @@
-
-from sqlalchemy import Column, Integer, String, Float, UniqueConstraint, create_engine
-from sqlalchemy.orm import declarative_base, sessionmaker, Session
-from sqlalchemy.exc import IntegrityError
-
 from loguru import logger
+from sqlalchemy import Column, Float, Integer, String, UniqueConstraint, create_engine
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 Base = declarative_base()
+
 
 class MetaData(Base):
     """
@@ -14,10 +13,12 @@ class MetaData(Base):
     Each row stores a unique metadata name and its associated value.
     The `name` column acts as the primary key.
     """
+
     __tablename__ = "metadata"
 
     name = Column(String, primary_key=True, nullable=False)
     value = Column(String, nullable=False)
+
 
 class Location(Base):
     """
@@ -26,6 +27,7 @@ class Location(Base):
     Each location entry is uniquely identified by the combination
     of `key_id` and `timestamp`.
     """
+
     __tablename__ = "locations"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -34,9 +36,8 @@ class Location(Base):
     lat = Column(Float, nullable=False)
     lon = Column(Float, nullable=False)
 
-    __table_args__ = (
-        UniqueConstraint("key_id", "timestamp", name="uix_id_timestamp"),
-    )
+    __table_args__ = (UniqueConstraint("key_id", "timestamp", name="uix_id_timestamp"),)
+
 
 class PushedLocation(Base):
     """
@@ -46,6 +47,7 @@ class PushedLocation(Base):
     Ensures that the same (key_id, endpoint_id, timestamp) combination
     cannot be stored more than once.
     """
+
     __tablename__ = "pushed_locations"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -55,12 +57,10 @@ class PushedLocation(Base):
 
     __table_args__ = (
         UniqueConstraint(
-            "key_id",
-            "endpoint_id",
-            "timestamp",
-            name="uix_key_endpoint_timestamp"
+            "key_id", "endpoint_id", "timestamp", name="uix_key_endpoint_timestamp"
         ),
     )
+
 
 class MetaDataService:
     """
@@ -110,6 +110,7 @@ class MetaDataService:
         entry = self.session.query(MetaData).filter_by(name=name).first()
         return entry.value if entry is not None else default
 
+
 class LocationService:
     """
     Service class for storing and managing location records
@@ -138,12 +139,7 @@ class LocationService:
             lat: Latitude coordinate.
             lon: Longitude coordinate.
         """
-        location = Location(
-            key_id=key_id,
-            timestamp=timestamp,
-            lat=lat,
-            lon=lon
-        )
+        location = Location(key_id=key_id, timestamp=timestamp, lat=lat, lon=lon)
 
         self.session.add(location)
         try:
@@ -152,7 +148,6 @@ class LocationService:
         except IntegrityError:
             self.session.rollback()
             logger.debug(f"Location already exists: {key_id}, {timestamp}")
-
 
     def get_pending_locations(self, key_id: int, endpoint_id: int) -> list[Location]:
         """
@@ -172,7 +167,7 @@ class LocationService:
             .filter(
                 PushedLocation.key_id == key_id,
                 PushedLocation.endpoint_id == endpoint_id,
-                PushedLocation.timestamp == Location.timestamp
+                PushedLocation.timestamp == Location.timestamp,
             )
             .exists()
         )
@@ -198,9 +193,7 @@ class LocationService:
             timestamp: Timestamp of the location that was pushed.
         """
         pushedLocation = PushedLocation(
-            key_id=key_id,
-            endpoint_id=endpoint_id,
-            timestamp=timestamp
+            key_id=key_id, endpoint_id=endpoint_id, timestamp=timestamp
         )
 
         self.session.add(pushedLocation)
@@ -214,7 +207,10 @@ class LocationService:
             logger.debug(
                 f"Timestamp {timestamp} already marked as pushed for key {key_id} and endpoint {endpoint_id}; rolling back"
             )
-            logger.warning("A location was about to be marked as pushed repeatedly. This should never happen logically and indicates a bug.")
+            logger.warning(
+                "A location was about to be marked as pushed repeatedly. This should never happen logically and indicates a bug."
+            )
+
 
 def init_db(db_path: str) -> Session:
     """
