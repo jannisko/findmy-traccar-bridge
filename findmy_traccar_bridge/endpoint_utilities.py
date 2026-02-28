@@ -11,7 +11,7 @@ class LocationPusher(ABC):
     """
     Abstract base class for pushing location data to endpoints.
 
-    Child classes must implement the `pushLocation` method for a specific endpoint
+    Child classes must implement the `push_location` method for a specific endpoint
     (e.g., Traccar, Nextcloud, etc.).
 
     Attributes:
@@ -38,7 +38,7 @@ class LocationPusher(ABC):
         self.endpointId = int(hashed[:16], 16) % 1_000_000
 
     @abstractmethod
-    def pushLocation(self, location: Location) -> bool:
+    def push_location(self, location: Location) -> bool:
         """
         Push a single location to the endpoint.
 
@@ -52,20 +52,20 @@ class LocationPusher(ABC):
         """
         pass
 
-    def pushPendingLocations(self) -> None:
+    def push_pending_locations(self) -> None:
         """
         Push all locations that have not yet been pushed to this endpoint.
 
-        Fetches pending locations from the LocationServer and calls `pushLocation` on each.
+        Fetches pending locations from the LocationServer and calls `push_location` on each.
         If successful, marks the location as pushed in the database.
         """
 
-        pending_locations = self.locationStorage.getPendingLocations(self.keyId, self.endpointId)
+        pending_locations = self.locationStorage.get_pending_locations(self.keyId, self.endpointId)
         logger.debug(f"Found {len(pending_locations)} pending locations for key {self.keyId} to push")
 
         for location in pending_locations:
-            if self.pushLocation(location):
-                self.locationStorage.markAsPushed(self.keyId, self.endpointId, location.timestamp)
+            if self.push_location(location):
+                self.locationStorage.mark_as_pushed(self.keyId, self.endpointId, location.timestamp)
 
         logger.debug(f"Finished pushing attempts for key ID '{self.keyId}' and endpoint '{self.endpointUrl}'")
 
@@ -93,7 +93,7 @@ class TraccarLocationPusher(LocationPusher):
         logger.info(f"Succesfully created TraccarLocationPusher for endpoint '{endpointUrl}' and keyID '{keyId}'")
 
 
-    def pushLocation(self, location: Location) -> bool:
+    def push_location(self, location: Location) -> bool:
         """
         Push a single location to a Traccar server. Overrides parent method.
 

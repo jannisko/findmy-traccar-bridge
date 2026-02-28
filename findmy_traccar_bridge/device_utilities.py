@@ -44,7 +44,7 @@ class AppleAccountManager:
 
         self.pollingInterval = int(os.environ.get("BRIDGE_POLL_INTERVAL", 60 * 60)) # defaults to 60 * 60 seconds = 60 min
 
-    def generateLoginToken(self):
+    def generate_login_token(self):
         """
         Interactively authenticate with Apple and generate a login token.
 
@@ -82,7 +82,7 @@ class AppleAccountManager:
                     self.accountPath)
 
         
-    def loadLoginToken(self):
+    def load_login_token(self):
         """
         Load an existing Apple login token from the data folder.
 
@@ -112,7 +112,7 @@ class AppleAccountManager:
             self.appleAccount._asyncacc._uid[:4]
         )
     
-    def blockUntilNextPoll(self):
+    def block_until_next_poll(self):
         """
         Block execution until the configured polling interval has elapsed.
 
@@ -120,7 +120,7 @@ class AppleAccountManager:
         that Apple API rate limits are respected.
         """
 
-        lastApiPollTime = int(self.metaDataServer.getMetaData(name = 'last_api_poll_time', default = "0"))
+        lastApiPollTime = int(self.metaDataServer.get_metadata(name = 'last_api_poll_time', default = "0"))
         timeSinceLastPoll = int(datetime.datetime.now().timestamp()) - lastApiPollTime #time in seconds since last poll
 
         timeToNextPoll = self.pollingInterval - timeSinceLastPoll
@@ -136,7 +136,7 @@ class AppleAccountManager:
         logger.debug("Loop will be continued.")
         return
 
-    def executeApiPoll(
+    def execute_api_poll(
         self,
         haystackKeys: List[KeyPair],
         findmyAccessories: List[FindMyAccessory],
@@ -159,7 +159,7 @@ class AppleAccountManager:
             result = self.appleAccount.fetch_location_history([*haystackKeys, *findmyAccessories]) #TODO REMOVE TO TEST API POLLS
             # result = dict()
             logger.info(
-                "AppleAccountManager.executeApiPoll: API Polled successfully. Next Poll in {}s ({} UTC).",
+                "AppleAccountManager.execute_api_poll: API Polled successfully. Next Poll in {}s ({} UTC).",
                 self.pollingInterval,
                 (datetime.datetime.now() + datetime.timedelta(seconds=self.pollingInterval)).isoformat(timespec="seconds"),
             )
@@ -170,7 +170,7 @@ class AppleAccountManager:
             logger.error(f"Unhandled exeception while polling FindMy API: {e}")
             return None
         finally:
-            self.metaDataServer.setMetaData(name = 'last_api_poll_time', value = str(int(datetime.datetime.now().timestamp())))
+            self.metaDataServer.set_metadata(name = 'last_api_poll_time', value = str(int(datetime.datetime.now().timestamp())))
 
 class DeviceManager:
     """
@@ -191,7 +191,7 @@ class DeviceManager:
         self.haystackKeys: List[KeyPair] = []
         self.findmyKeys: List[FindMyAccessory] = []
 
-    def loadDevices(self) -> None:
+    def load_devices(self) -> None:
         """
         Load all configured devices.
 
@@ -200,10 +200,10 @@ class DeviceManager:
         devices are configured.
         """
 
-        self.haystackKeys = self.loadHaystackKeys()
-        self.findmyKeys = self.loadFindmyKeys()
+        self.haystackKeys = self.load_haystack_keys()
+        self.findmyKeys = self.load_findmy_keys()
 
-        totalNumDevices = self.getNumHaystacks() + self.getNumFindmys()
+        totalNumDevices = self.get_num_haystacks() + self.get_num_findmys()
         if (totalNumDevices) == 0:
             raise ValueError(
                 "No tracking devices configured. Either set BRIDGE_PRIVATE_KEYS environment variable or mount a directory with .plist files to /bridge/plists"
@@ -214,7 +214,7 @@ class DeviceManager:
                 totalNumDevices,
             )
 
-    def getHaystackKeys(self) -> List[KeyPair]:
+    def get_haystack_keys(self) -> List[KeyPair]:
         """
         Return all loaded Haystack keys.
 
@@ -223,7 +223,7 @@ class DeviceManager:
         """
         return self.haystackKeys
     
-    def getFindmyAsseccories(self) -> List[FindMyAccessory]:
+    def get_findmy_accessories(self) -> List[FindMyAccessory]:
         """
         Return all loaded Find My accessories.
 
@@ -233,21 +233,21 @@ class DeviceManager:
 
         return self.findmyKeys
 
-    def getNumHaystacks(self) -> int:
+    def get_num_haystacks(self) -> int:
         """
         Return the number of loaded Haystack keys.
         """
 
         return len(self.haystackKeys)
     
-    def getNumFindmys(self) -> int:
+    def get_num_findmys(self) -> int:
         """
         Return the number of loaded Find My accessories.
         """
 
         return len(self.findmyKeys)
     
-    def loadHaystackKeys(self) -> List[KeyPair]:
+    def load_haystack_keys(self) -> List[KeyPair]:
         """
         Load Haystack KeyPairs from the environment variable `BRIDGE_PRIVATE_KEYS`.
 
@@ -269,7 +269,7 @@ class DeviceManager:
 
         return haystackKeys
 
-    def loadFindmyKeys(self) -> List[FindMyAccessory]:
+    def load_findmy_keys(self) -> List[FindMyAccessory]:
         """
         Load FindMyAccessory objects from .plist files.
 
@@ -309,7 +309,7 @@ class DeviceManager:
         
         return findmyKeys
 
-    def generateHaystackId(self, key: KeyPair) -> int:
+    def generate_haystack_id(self, key: KeyPair) -> int:
         """
         Generate a numeric device ID for a Haystack key.
 
@@ -322,7 +322,7 @@ class DeviceManager:
 
         return int.from_bytes(key.hashed_adv_key_bytes) % 1_000_000
 
-    def generateFindmyId(self, accessory: FindMyAccessory) -> int:
+    def generate_findmy_id(self, accessory: FindMyAccessory) -> int:
         """
         Generate a numeric device ID for a Find My accessory.
 
@@ -335,7 +335,7 @@ class DeviceManager:
 
         return int.from_bytes(accessory.identifier.encode()) % 1_000_000,
 
-    def generateKeyId(self, key: KeyPair | FindMyAccessory) -> int:
+    def generate_key_id(self, key: KeyPair | FindMyAccessory) -> int:
         """
         Generate a numeric device ID for either supported key type.
 
@@ -350,6 +350,6 @@ class DeviceManager:
         """
 
         if isinstance(key, FindMyAccessory):
-            return self.generateFindmyId(key)
+            return self.generate_findmy_id(key)
         if isinstance(key, KeyPair):
-            return self.generateHaystackId(key)
+            return self.generate_haystack_id(key)

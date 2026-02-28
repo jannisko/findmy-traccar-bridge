@@ -118,4 +118,4 @@ docker compose exec bridge .venv/bin/findmy-traccar-bridge-init
 
 ## Development Docs
 The current codebase provides a simple and extensible way to integrate bridge functionality with other services, such as Nextcloud Maps or Nextcloud Contacts.
-The [`LocationPusher`](findmy_traccar_bridge/endpoint_utilities.py) class implements the core functionality. To add support for another service, create a new pusher class that inherits from `LocationPusher` and override the `pushLocation()` method with the service-specific implementation.
+The [`LocationPusher`](findmy_traccar_bridge/endpoint_utilities.py) class implements the core functionality. To add support for another service, create a new pusher class that inherits from `LocationPusher` and override the `push_location()` method with the service-specific implementation.

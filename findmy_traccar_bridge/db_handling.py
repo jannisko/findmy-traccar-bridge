@@ -76,7 +76,7 @@ class MetaDataServer:
         """
         self.session = session
 
-    def setMetaData(self, name: str, value: str) -> None:
+    def set_metadata(self, name: str, value: str) -> None:
         """
         Create or update a metadata entry.
 
@@ -96,7 +96,7 @@ class MetaDataServer:
         entry.value = value
         self.session.commit()
 
-    def getMetaData(self, name: str, default: str = "") -> str | None:
+    def get_metadata(self, name: str, default: str = "") -> str | None:
         """
         Retrieve a metadata value by name.
 
@@ -125,7 +125,7 @@ class LocationServer:
         """
         self.session = session
 
-    def addLocation(self, keyId: int, timestamp: int, lat: float, lon: float) -> None:
+    def add_location(self, keyId: int, timestamp: int, lat: float, lon: float) -> None:
         """
         Store a new location entry.
 
@@ -154,7 +154,7 @@ class LocationServer:
             logger.debug(f"Location already exists: {keyId}, {timestamp}")
 
 
-    def getPendingLocations(self, keyId: int, endpointId: int) -> list[Location]:
+    def get_pending_locations(self, keyId: int, endpointId: int) -> list[Location]:
         """
         Retrieve all locations for a given key that have not yet been
         pushed to a specific endpoint.
@@ -185,7 +185,7 @@ class LocationServer:
             .all()
         )
 
-    def markAsPushed(self, keyId: int, endpointId: int, timestamp: int) -> None:
+    def mark_as_pushed(self, keyId: int, endpointId: int, timestamp: int) -> None:
         """
         Mark a specific location timestamp as successfully pushed
         to an endpoint.
@@ -215,7 +215,7 @@ class LocationServer:
                 f"Timestamp {timestamp} already marked as pushed for key {keyId} and endpoint {endpointId}; rolling back"
             )
 
-def initDb(db_path: str) -> Session:
+def init_db(db_path: str) -> Session:
     """
     Initialize the SQLite database and return a session.
 

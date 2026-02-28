@@ -12,7 +12,7 @@ logger.remove()
 logger.add(sys.stderr, level=os.environ.get("BRIDGE_LOGGING_LEVEL", "INFO"))
 
 from .device_utilities import DeviceManager, AppleAccountManager
-from .db_handling import LocationServer, MetaDataServer, initDb
+from .db_handling import LocationServer, MetaDataServer, init_db
 from .endpoint_utilities import TraccarLocationPusher
 
 data_folder = Path("./data/")
@@ -45,34 +45,34 @@ def bridge() -> None:
             `.venv/bin/findmy-traccar-bridge`
     """
 
-    session = initDb(db_path)
+    session = init_db(db_path)
 
     locationStorage = LocationServer(session)
     metaDataServer = MetaDataServer(session)
 
     #load haystack keys and findmy assessories
     deviceManager = DeviceManager()
-    deviceManager.loadDevices() #throws error if no keys are found
+    deviceManager.load_devices() #throws error if no keys are found
 
     # load apple account from directory
     appleAccountManager = AppleAccountManager(apple_account_path, anisette_libs_path, metaDataServer)
-    appleAccountManager.loadLoginToken()
+    appleAccountManager.load_login_token()
 
     # instanciate one traccar pusher for each key
     traccarLocationPushers: List[TraccarLocationPusher] = []
 
-    for key in deviceManager.getHaystackKeys():
+    for key in deviceManager.get_haystack_keys():
         traccarLocationPushers.append(TraccarLocationPusher(
                                         endpointUrl = os.environ["BRIDGE_TRACCAR_SERVER"],
-                                        keyId = deviceManager.generateHaystackId(key),
+                                        keyId = deviceManager.generate_haystack_id(key),
                                         locationStorage = locationStorage
                                     )
                                 )
     
-    for key in deviceManager.getFindmyAsseccories():
+    for key in deviceManager.get_findmy_accessories():
         traccarLocationPushers.append(TraccarLocationPusher(
                                         endpointUrl = os.environ["BRIDGE_TRACCAR_SERVER"],
-                                        keyId = deviceManager.generateFindmyId(key),
+                                        keyId = deviceManager.generate_findmy_id(key),
                                         locationStorage = locationStorage
                                     )
                                 )
@@ -82,14 +82,14 @@ def bridge() -> None:
     while True:
 
         # let  the account manager block the process until the polling intervall is over
-        appleAccountManager.blockUntilNextPoll()
+        appleAccountManager.block_until_next_poll()
 
-        newLocationDict: Dict[Union[KeyPair, FindMyAccessory], list]= appleAccountManager.executeApiPoll(deviceManager.getHaystackKeys(), deviceManager.getFindmyAsseccories())
-        # save_debug_result(newLocationDict, data_folder / "debug_locations.pkl", deviceManager.generateKeyId)
+        newLocationDict: Dict[Union[KeyPair, FindMyAccessory], list]= appleAccountManager.execute_api_poll(deviceManager.get_haystack_keys(), deviceManager.get_findmy_accessories())
+        # save_debug_result(newLocationDict, data_folder / "debug_locations.pkl", deviceManager.generate_key_id)
         # newLocationDict = load_debug_result(data_folder / "debug_locations.pkl") #TODO REMOVE TO TEST API POLLS
 
         for key, reports in newLocationDict.items():
-            keyId: int = deviceManager.generateKeyId(key)
+            keyId: int = deviceManager.generate_key_id(key)
             
             logger.info(
                     "Received {} locations from device:{} from Apples API",
@@ -99,7 +99,7 @@ def bridge() -> None:
 
             # add the new locations to the database
             for report in reports:
-                locationStorage.addLocation(keyId,
+                locationStorage.add_location(keyId,
                                             int(report.timestamp.timestamp()),
                                             report.latitude,
                                             report.longitude)
@@ -108,7 +108,7 @@ def bridge() -> None:
         # after new locations are added to the database, call the objects that oush locations to endpoints
 
         for traccarLocationPusher in traccarLocationPushers:
-            traccarLocationPusher.pushPendingLocations()
+            traccarLocationPusher.push_pending_locations()
 
 
 def init() -> None:
@@ -125,4 +125,4 @@ def init() -> None:
     """
 
     appleAccountManager = AppleAccountManager(apple_account_path, anisette_libs_path)
-    appleAccountManager.generateLoginToken()
+    appleAccountManager.generate_login_token()
