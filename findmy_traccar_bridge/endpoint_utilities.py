@@ -51,11 +51,11 @@ class LocationPusher(ABC):
         self.endpoint_id = int(hashed[:16], 16) % 1_000_000
 
         if self.endpoint_url == "":
-            logger.error("Location pusher requires a valid url specified by BRIDGE_TRACCAR_SERVER. This pusher will remain inactive.")
+            logger.error("Location pusher requires a valid url specified by BRIDGE_TRACCAR_SERVER. Location Pusher will remain inactiive.")
             self.healthy = False
         
-        if self.endpoint_url.startswith("http"):
-            logger.error("BRIDGE_TRACCAR_SERVER must hold an url without the scheme specified (NO http(s) in the beginning). This pusher will remain inactiive.")
+        if not self.endpoint_url.startswith("http"):
+            logger.error("BRIDGE_TRACCAR_SERVER = '{}' is invalid. It must be an URL starting with 'http' or 'https'. Location Pusher will remain inactiive.", self.endpoint_url)
             self.healthy = False
 
     @abstractmethod
@@ -165,7 +165,7 @@ class TraccarLocationPusher(LocationPusher):
 
         try:
             # send request to traccar server
-            resp = requests.post("https://" + self.endpoint_url, data=payload)
+            resp = requests.post(self.endpoint_url, data=payload)
             resp.raise_for_status()  # will raise an exception if status is 4xx or 5xx
             logger.debug(
                 f"Pushed location {payload}, key ID {self.key_id}, successfully to {self.endpoint_url}"

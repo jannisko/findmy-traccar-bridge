@@ -105,7 +105,7 @@ def bridge() -> None:
                 key_id: int = device_manager.generate_key_id(key)
 
                 logger.info(
-                    "Received {} locations from device:{} from Apples API",
+                    "Received {} locations from device with ID {} from Apples API",
                     len(reports),
                     key_id,
                 )

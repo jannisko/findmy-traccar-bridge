@@ -1,6 +1,7 @@
 import datetime
 import getpass
 import os
+import sys
 import time
 from pathlib import Path
 from typing import Dict, List, Union
@@ -232,9 +233,8 @@ class DeviceManager:
 
         totalNumDevices = self.get_num_haystacks() + self.get_num_findmys()
         if (totalNumDevices) == 0:
-            raise ValueError(
-                "No tracking devices configured. Either set BRIDGE_PRIVATE_KEYS environment variable or mount a directory with .plist files to /bridge/plists"
-            )
+            logger.error("No tracking devices configured. Either set BRIDGE_PRIVATE_KEYS environment variable or mount a directory with .plist files to /bridge/plists. Program will now be terminated.")
+            sys.exit()
         else:
             logger.info(
                 "Loaded {} key(s) in total",
