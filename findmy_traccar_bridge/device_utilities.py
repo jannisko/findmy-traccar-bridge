@@ -362,8 +362,7 @@ class DeviceManager:
         Returns:
             Integer ID derived from the accessory identifier.
         """
-
-        return (int.from_bytes(accessory.identifier.encode()) % 1_000_000,)
+        return int.from_bytes(accessory.identifier.encode()) % 1_000_000
 
     def generate_key_id(self, key: KeyPair | FindMyAccessory) -> int:
         """
