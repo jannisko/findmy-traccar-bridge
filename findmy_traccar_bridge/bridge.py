@@ -94,12 +94,16 @@ def bridge() -> None:
         # check if API can be polled savely and poll if yes
 
         if apple_account_manager.safe_to_poll():
-            new_location_dict: Dict[
-                Union[KeyPair, FindMyAccessory], list[LocationReport]
-            ] = apple_account_manager.execute_api_poll(
+            result = apple_account_manager.execute_api_poll(
                 device_manager.get_haystack_keys(),
                 device_manager.get_findmy_accessories(),
             )
+
+            if result is None:
+                # there was an error with the API request, which has been logged already
+                break
+
+            new_location_dict = result
 
             for key, reports in new_location_dict.items():
                 key_id: int = device_manager.generate_key_id(key)
