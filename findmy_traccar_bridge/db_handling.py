@@ -104,7 +104,7 @@ class MetaDataService:
         entry.value = value
         self.session.commit()
 
-    def get_metadata(self, name: str, default: str = None) -> str | None:
+    def get_metadata[T: (str | None)](self, name: str, default: T = None) -> str | T:
         """
         Retrieve a metadata value by name.
 
@@ -220,7 +220,7 @@ class LocationService:
             )
 
 
-def init_db(db_path: str) -> Session:
+def init_db(db_path: pathlib.Path) -> Session:
     """
     Initialize the SQLite database and return a session.
 

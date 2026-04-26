@@ -3,10 +3,10 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Union
+from typing import Any, Callable
 
 # Third-party
-from findmy import FindMyAccessory, KeyPair, LocationReport
+from findmy import FindMyAccessory, KeyPair
 from loguru import logger
 
 from .db_handling import LocationService, MetaDataService, init_db
@@ -66,9 +66,11 @@ def bridge() -> None:
     apple_account_manager.load_login_token()
 
     # instanciate one traccar pusher for each key
-    traccar_location_pushers: List[TraccarLocationPusher] = []
+    traccar_location_pushers: list[TraccarLocationPusher] = []
 
-    sources = [
+    sources: list[
+        tuple[list[KeyPair] | list[FindMyAccessory], Callable[[Any], int]]
+    ] = [
         (device_manager.get_haystack_keys(), device_manager.generate_haystack_id),
         (device_manager.get_findmy_accessories(), device_manager.generate_findmy_id),
     ]

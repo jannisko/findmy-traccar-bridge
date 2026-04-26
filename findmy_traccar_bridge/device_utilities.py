@@ -4,7 +4,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Union
+from typing import Any, Dict, List, TypeGuard, Union
 
 from findmy import FindMyAccessory, KeyPair, LocationReport
 from findmy.reports import (
@@ -31,7 +31,7 @@ class AppleAccountManager:
         self,
         account_path: Path,
         anisette_libs_path: Path,
-        metadata_server: MetaDataService = None,
+        metadata_server: MetaDataService | None = None,
     ):
         """
         Initialize the AppleAccountManager.
@@ -130,7 +130,9 @@ class AppleAccountManager:
         Uses the stored metadata value `last_api_poll_time` to ensure
         that Apple API rate limits are respected.
         """
-
+        assert self.metadata_server is not None, (
+            "Tried to access metadata, but MetaDataService was not given to AppleAccountManager"
+        )
         last_api_poll_time = int(
             self.metadata_server.get_metadata(name="last_api_poll_time", default="0")
         )
@@ -175,6 +177,9 @@ class AppleAccountManager:
             The timestamp of the poll is stored in metadata regardless of success or failure.
         """
         try:
+            assert self.apple_account is not None, (
+                "Tried polling API before initializing account"
+            )
             result = self.apple_account.fetch_location_history(
                 [*haystack_keys, *findmy_accessories]
             )
@@ -187,6 +192,16 @@ class AppleAccountManager:
                     + datetime.timedelta(seconds=self.polling_interval)
                 ).isoformat(timespec="seconds"),
             )
+
+            def narrow_dict_key_type(
+                d: dict[Any, list[LocationReport]],
+            ) -> TypeGuard[dict[KeyPair | FindMyAccessory, list[LocationReport]]]:
+                return all(
+                    isinstance(key, KeyPair) or isinstance(key, FindMyAccessory)
+                    for key in d
+                )
+
+            assert narrow_dict_key_type(result)
             return result
         except Exception as e:
             # The api call could encounter any number of issues. For now we just catch them indiscriminantly.
@@ -194,6 +209,9 @@ class AppleAccountManager:
             logger.error(f"Unhandled exeception while polling FindMy API: {e}")
             return None
         finally:
+            assert self.metadata_server is not None, (
+                "Tried to set metadata, but MetaDataService was not given to AppleAccountManager"
+            )
             self.metadata_server.set_metadata(
                 name="last_api_poll_time",
                 value=str(int(datetime.datetime.now().timestamp())),
@@ -233,7 +251,9 @@ class DeviceManager:
 
         totalNumDevices = self.get_num_haystacks() + self.get_num_findmys()
         if (totalNumDevices) == 0:
-            logger.error("No tracking devices configured. Either set BRIDGE_PRIVATE_KEYS environment variable or mount a directory with .plist files to /bridge/plists. Program will now be terminated.")
+            logger.error(
+                "No tracking devices configured. Either set BRIDGE_PRIVATE_KEYS environment variable or mount a directory with .plist files to /bridge/plists. Program will now be terminated."
+            )
             sys.exit()
         else:
             logger.info(
@@ -362,6 +382,9 @@ class DeviceManager:
         Returns:
             Integer ID derived from the accessory identifier.
         """
+        assert accessory.identifier is not None, (
+            "Accessory didn't include identifier to derive id from"
+        )
         return int.from_bytes(accessory.identifier.encode()) % 1_000_000
 
     def generate_key_id(self, key: KeyPair | FindMyAccessory) -> int:
