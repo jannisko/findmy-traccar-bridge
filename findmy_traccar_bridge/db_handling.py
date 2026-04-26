@@ -1,7 +1,15 @@
+import pathlib
+
 from loguru import logger
-from sqlalchemy import Column, Float, Integer, String, UniqueConstraint, create_engine
+from sqlalchemy import UniqueConstraint, create_engine
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, declarative_base, sessionmaker
+from sqlalchemy.orm import (
+    Mapped,
+    Session,
+    declarative_base,
+    mapped_column,
+    sessionmaker,
+)
 
 Base = declarative_base()
 
@@ -16,8 +24,8 @@ class MetaData(Base):
 
     __tablename__ = "metadata"
 
-    name = Column(String, primary_key=True, nullable=False)
-    value = Column(String, nullable=False)
+    name: Mapped[str] = mapped_column(primary_key=True)
+    value: Mapped[str]
 
 
 class Location(Base):
@@ -30,11 +38,11 @@ class Location(Base):
 
     __tablename__ = "locations"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    key_id = Column(Integer, nullable=False)
-    timestamp = Column(Integer, nullable=False)
-    lat = Column(Float, nullable=False)
-    lon = Column(Float, nullable=False)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    key_id: Mapped[int]
+    timestamp: Mapped[int]
+    lat: Mapped[float]
+    lon: Mapped[float]
 
     __table_args__ = (UniqueConstraint("key_id", "timestamp", name="uix_id_timestamp"),)
 
@@ -50,10 +58,10 @@ class PushedLocation(Base):
 
     __tablename__ = "pushed_locations"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    key_id = Column(Integer, nullable=False)
-    endpoint_id = Column(Integer, nullable=False)
-    timestamp = Column(Integer, nullable=False)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    key_id: Mapped[int]
+    endpoint_id: Mapped[int]
+    timestamp: Mapped[int]
 
     __table_args__ = (
         UniqueConstraint(
