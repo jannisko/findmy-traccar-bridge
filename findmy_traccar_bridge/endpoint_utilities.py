@@ -29,6 +29,7 @@ class LocationPusher(ABC):
         key_id: int,
         location_storage: LocationService,
         pushing_interval: int,
+        clock: Clock,
     ):
         """
         Initialize a LocationPusher.
@@ -45,6 +46,7 @@ class LocationPusher(ABC):
         self.pushing_interval = pushing_interval
         self.last_push_time = 0
         self.healthy = True
+        self.clock = clock
 
         # compute unique id between 0-999,999 based on endpoint url
         hashed = hashlib.sha256(endpoint_url.encode()).hexdigest()
@@ -84,7 +86,7 @@ class LocationPusher(ABC):
 
         """
         time_since_last_poll = (
-            int(Clock.now().timestamp()) - self.last_push_time
+            int(self.clock.now().timestamp()) - self.last_push_time
         )  # time in seconds since last push
         return self.pushing_interval < time_since_last_poll
 
@@ -116,7 +118,7 @@ class LocationPusher(ABC):
             f"Finished pushing attempts for key ID '{self.key_id}' and endpoint '{self.endpoint_url}'"
         )
 
-        self.last_push_time = int(Clock.now().timestamp())
+        self.last_push_time = int(self.clock.now().timestamp())
 
 
 class TraccarLocationPusher(LocationPusher):
@@ -133,6 +135,7 @@ class TraccarLocationPusher(LocationPusher):
         key_id: int,
         location_storage: LocationService,
         pushing_interval: int,
+        clock: Clock,
     ):
         """
         Initialize a TraccarLocationPusher.
@@ -143,7 +146,7 @@ class TraccarLocationPusher(LocationPusher):
             location_storage: The LocationService instance used to fetch pending locations.
         """
 
-        super().__init__(endpoint_url, key_id, location_storage, pushing_interval)
+        super().__init__(endpoint_url, key_id, location_storage, pushing_interval, clock)
 
         logger.info(
             f"Succesfully created TraccarLocationPusher for endpoint '{endpoint_url}' and keyID '{key_id}'"

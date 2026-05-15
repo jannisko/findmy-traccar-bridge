@@ -5,10 +5,8 @@ from datetime import datetime
 # wrapper for time functions which can be switched out for testing
 class Clock:
 
-    @staticmethod
-    def now() -> datetime:
+    def now(self) -> datetime:
         return datetime.now()
 
-    @staticmethod
-    def sleep(seconds: float):
+    def sleep(self, seconds: float):
         time.sleep(seconds)

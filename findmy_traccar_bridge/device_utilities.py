@@ -31,6 +31,7 @@ class AppleAccountManager:
         self,
         account_path: Path,
         anisette_libs_path: Path,
+        clock: Clock,
         metadata_server: MetaDataService | None = None,
     ):
         """
@@ -52,6 +53,8 @@ class AppleAccountManager:
         self.polling_interval = int(
             os.environ.get("BRIDGE_POLL_INTERVAL", 60 * 60)
         )  # defaults to 60 * 60 seconds = 60 min
+
+        self.clock = clock
 
     def generate_login_token(self):
         """
@@ -113,7 +116,7 @@ class AppleAccountManager:
 
                 firstAttempt = False
 
-            Clock.sleep(1)
+            self.clock.sleep(1)
 
         # load account
         self.apple_account = AppleAccount.from_json(self.account_path)
@@ -137,7 +140,7 @@ class AppleAccountManager:
             self.metadata_server.get_metadata(name="last_api_poll_time", default="0")
         )
         time_since_last_poll = (
-            int(Clock.now().timestamp()) - last_api_poll_time
+            int(self.clock.now().timestamp()) - last_api_poll_time
         )  # time in seconds since last poll
 
         if self.polling_interval > time_since_last_poll:
@@ -147,7 +150,7 @@ class AppleAccountManager:
                     "Next API poll in {}s (at {} UTC) to avoid Apple API rate limitation violation.",
                     time_to_next_poll,
                     (
-                        Clock.now()
+                        self.clock.now()
                         + datetime.timedelta(seconds=time_to_next_poll)
                     ).isoformat(timespec="seconds"),
                 )
@@ -188,7 +191,7 @@ class AppleAccountManager:
                 "AppleAccountManager.execute_api_poll: API Polled successfully. Next Poll in {}s ({} UTC).",
                 self.polling_interval,
                 (
-                    Clock.now()
+                    self.clock.now()
                     + datetime.timedelta(seconds=self.polling_interval)
                 ).isoformat(timespec="seconds"),
             )
@@ -214,7 +217,7 @@ class AppleAccountManager:
             )
             self.metadata_server.set_metadata(
                 name="last_api_poll_time",
-                value=str(int(Clock.now().timestamp())),
+                value=str(int(self.clock.now().timestamp())),
             )
 
 

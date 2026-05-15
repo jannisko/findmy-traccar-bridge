@@ -26,126 +26,142 @@ db_path = data_folder / "db.db"
 apple_account_path = data_folder / "account.json"
 anisette_libs_path = data_folder / "ani_libs.bin"
 
-def bridge(until: datetime | None = None) -> None:
-    """
-    Main bridge loop.
+class Bridge:
 
-    Fetches location data from Apple FindMy API and forwards it to the configured
-    Traccar server for all devices (Haystack keys and FindMy accessories).
-    Uses a database to store locations and track which locations have been pushed.
+    clock: Clock
 
-    Steps performed:
-        1. Initialize database session.
-        2. Load Haystack keys and FindMy accessories.
-        3. Load Apple account login token.
-        4. Instantiate Traccar location pushers for each device.
-        5. Enter infinite loop:
-            a. Wait until the polling interval has elapsed.
-            b. Fetch latest location reports from Apple API.
-            c. Store new locations in the database.
-            d. Push pending locations to Traccar endpoints.
+    def __init__(self, clock: Clock = Clock()) -> None:
+        self.clock = clock
 
-    Notes:
-        - Designed to be called via the CLI binary:
-            `.venv/bin/findmy-traccar-bridge`
-    """
+    def run(self, until: datetime | None = None) -> None:
+        """
+        Main bridge loop.
 
-    session = init_db(db_path)
+        Fetches location data from Apple FindMy API and forwards it to the configured
+        Traccar server for all devices (Haystack keys and FindMy accessories).
+        Uses a database to store locations and track which locations have been pushed.
 
-    location_storage = LocationService(session)
-    metadata_server = MetaDataService(session)
+        Steps performed:
+            1. Initialize database session.
+            2. Load Haystack keys and FindMy accessories.
+            3. Load Apple account login token.
+            4. Instantiate Traccar location pushers for each device.
+            5. Enter infinite loop:
+                a. Wait until the polling interval has elapsed.
+                b. Fetch latest location reports from Apple API.
+                c. Store new locations in the database.
+                d. Push pending locations to Traccar endpoints.
 
-    # load haystack keys and findmy assessories
-    device_manager = DeviceManager()
-    device_manager.load_devices()  # throws error if no keys are found
+        Notes:
+            - Designed to be called via the CLI binary:
+                `.venv/bin/findmy-traccar-bridge`
+        """
 
-    # load apple account from directory
-    apple_account_manager = AppleAccountManager(
-        apple_account_path, anisette_libs_path, metadata_server
-    )
-    apple_account_manager.load_login_token()
+        session = init_db(db_path)
 
-    # instanciate one traccar pusher for each key
-    traccar_location_pushers: list[TraccarLocationPusher] = []
+        location_storage = LocationService(session)
+        metadata_server = MetaDataService(session)
 
-    sources: list[
-        tuple[list[KeyPair] | list[FindMyAccessory], Callable[[Any], int]]
-    ] = [
-        (device_manager.get_haystack_keys(), device_manager.generate_haystack_id),
-        (device_manager.get_findmy_accessories(), device_manager.generate_findmy_id),
-    ]
+        # load haystack keys and findmy assessories
+        device_manager = DeviceManager()
+        device_manager.load_devices()  # throws error if no keys are found
 
-    traccar_location_pushers.extend(
-        TraccarLocationPusher(
-            endpoint_url=os.environ.get("BRIDGE_TRACCAR_SERVER", ""),
-            key_id=key_id_function(key),
-            location_storage=location_storage,
-            pushing_interval=10,  # secodns
+        # load apple account from directory
+        apple_account_manager = AppleAccountManager(
+            apple_account_path, anisette_libs_path, self.clock, metadata_server
         )
-        for keys, key_id_function in sources
-        for key in keys
-    )
+        apple_account_manager.load_login_token()
 
-    logger.info("Successfully created {} traccar pusher", len(traccar_location_pushers))
+        # instanciate one traccar pusher for each key
+        traccar_location_pushers: list[TraccarLocationPusher] = []
 
-    #################################
-    #### main loooop ################
-    #################################
+        sources: list[
+            tuple[list[KeyPair] | list[FindMyAccessory], Callable[[Any], int]]
+        ] = [
+            (device_manager.get_haystack_keys(), device_manager.generate_haystack_id),
+            (device_manager.get_findmy_accessories(), device_manager.generate_findmy_id),
+        ]
 
-    while until is None or Clock.now() < until:
-        # check if API can be polled savely and poll if yes
-
-        if apple_account_manager.safe_to_poll():
-            result = apple_account_manager.execute_api_poll(
-                device_manager.get_haystack_keys(),
-                device_manager.get_findmy_accessories(),
+        traccar_location_pushers.extend(
+            TraccarLocationPusher(
+                endpoint_url=os.environ.get("BRIDGE_TRACCAR_SERVER", ""),
+                key_id=key_id_function(key),
+                location_storage=location_storage,
+                pushing_interval=10,  # secodns
+                clock=self.clock,
             )
+            for keys, key_id_function in sources
+            for key in keys
+        )
 
-            if result is None:
-                # there was an error with the API request, which has been logged already
-                break
+        logger.info("Successfully created {} traccar pusher", len(traccar_location_pushers))
 
-            new_location_dict = result
+        #################################
+        #### main loooop ################
+        #################################
 
-            for key, reports in new_location_dict.items():
-                key_id: int = device_manager.generate_key_id(key)
+        while until is None or self.clock.now() < until:
+            # check if API can be polled savely and poll if yes
 
-                logger.info(
-                    "Received {} locations from device with ID {} from Apples API",
-                    len(reports),
-                    key_id,
+            if apple_account_manager.safe_to_poll():
+                result = apple_account_manager.execute_api_poll(
+                    device_manager.get_haystack_keys(),
+                    device_manager.get_findmy_accessories(),
                 )
 
-                # add the new locations to the database
-                for report in reports:
-                    location_storage.add_location(
+                if result is None:
+                    # there was an error with the API request, which has been logged already
+                    break
+
+                new_location_dict = result
+
+                for key, reports in new_location_dict.items():
+                    key_id: int = device_manager.generate_key_id(key)
+
+                    logger.info(
+                        "Received {} locations from device with ID {} from Apples API",
+                        len(reports),
                         key_id,
-                        int(report.timestamp.timestamp()),
-                        report.latitude,
-                        report.longitude,
                     )
 
-        # after new locations are added to the database, call the objects that oush locations to endpoints
+                    # add the new locations to the database
+                    for report in reports:
+                        location_storage.add_location(
+                            key_id,
+                            int(report.timestamp.timestamp()),
+                            report.latitude,
+                            report.longitude,
+                        )
 
-        for traccar_location_pusher in traccar_location_pushers:
-            if traccar_location_pusher.ready_to_push():
-                traccar_location_pusher.push_pending_locations()
+            # after new locations are added to the database, call the objects that oush locations to endpoints
 
-        Clock.sleep(1)
+            for traccar_location_pusher in traccar_location_pushers:
+                if traccar_location_pusher.ready_to_push():
+                    traccar_location_pusher.push_pending_locations()
+
+            self.clock.sleep(1)
 
 
-def init() -> None:
-    """
-    One-time interactive Apple login procedure.
+    def init(self) -> None:
+        """
+        One-time interactive Apple login procedure.
 
-    Prompts user for email/password and handles two-factor authentication if required.
-    Stores the resulting login token for future automated polling.
+        Prompts user for email/password and handles two-factor authentication if required.
+        Stores the resulting login token for future automated polling.
 
-    Notes:
-        - Callable via the CLI binary:
-            `.venv/bin/findmy-traccar-bridge-init`
-        - Creates `account.json` in the data folder for future use.
-    """
+        Notes:
+            - Callable via the CLI binary:
+                `.venv/bin/findmy-traccar-bridge-init`
+            - Creates `account.json` in the data folder for future use.
+        """
 
-    apple_account_manager = AppleAccountManager(apple_account_path, anisette_libs_path)
-    apple_account_manager.generate_login_token()
+        apple_account_manager = AppleAccountManager(apple_account_path, anisette_libs_path, self.clock)
+        apple_account_manager.generate_login_token()
+
+def cli_bridge() -> None:
+    bridge = Bridge()
+    bridge.run()
+
+def cli_init() -> None:
+    bridge = Bridge()
+    bridge.init()
