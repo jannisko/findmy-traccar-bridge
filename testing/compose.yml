@@ -4,8 +4,6 @@ services:
     restart: unless-stopped
     ports:
       - 80:8082
-      - 5000-5150:5000-5150
-      - 5000-5150:5000-5150/udp
     volumes:
       - traccar_logs:/opt/traccar/logs:rw
       - ./traccar_config/:/opt/traccar/conf/:ro

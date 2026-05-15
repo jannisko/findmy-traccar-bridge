@@ -8,11 +8,13 @@ dependencies = [
     "findmy==0.9.8",
     "loguru>=0.7.3",
     "requests>=2.32.3",
+    "ruff>=0.9.2",
+    "sqlalchemy>=2.0.46",
 ]
 
 [project.scripts]
-findmy-traccar-bridge = "findmy_traccar_bridge.bridge:bridge"
-findmy-traccar-bridge-init = "findmy_traccar_bridge.bridge:init"
+findmy-traccar-bridge = "findmy_traccar_bridge.bridge:cli_bridge"
+findmy-traccar-bridge-init = "findmy_traccar_bridge.bridge:cli_init"
 
 [build-system]
 requires = ["hatchling"]
@@ -31,5 +33,7 @@ select = [
 
 [dependency-groups]
 dev = [
+    "pytest>=9.0.3",
+    "pytest-mock>=3.15.1",
     "ruff>=0.9.2",
 ]
