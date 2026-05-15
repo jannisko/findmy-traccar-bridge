@@ -1,7 +1,7 @@
 # Standard library
 import os
 import sys
-import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
@@ -14,6 +14,7 @@ from .db_handling import LocationService, MetaDataService, init_db
 # Local imports
 from .device_utilities import AppleAccountManager, DeviceManager
 from .endpoint_utilities import TraccarLocationPusher
+from .time import Clock
 
 logger.remove()
 logger.add(sys.stderr, level=os.environ.get("BRIDGE_LOGGING_LEVEL", "INFO"))
@@ -25,8 +26,7 @@ db_path = data_folder / "db.db"
 apple_account_path = data_folder / "account.json"
 anisette_libs_path = data_folder / "ani_libs.bin"
 
-
-def bridge() -> None:
+def bridge(until: datetime | None = None) -> None:
     """
     Main bridge loop.
 
@@ -92,7 +92,7 @@ def bridge() -> None:
     #### main loooop ################
     #################################
 
-    while True:
+    while until is None or Clock.now() < until:
         # check if API can be polled savely and poll if yes
 
         if apple_account_manager.safe_to_poll():
@@ -131,7 +131,7 @@ def bridge() -> None:
             if traccar_location_pusher.ready_to_push():
                 traccar_location_pusher.push_pending_locations()
 
-        time.sleep(1)
+        Clock.sleep(1)
 
 
 def init() -> None:

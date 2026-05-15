@@ -2,7 +2,6 @@ import datetime
 import getpass
 import os
 import sys
-import time
 from pathlib import Path
 from typing import Any, Dict, List, TypeGuard, Union
 
@@ -17,6 +16,7 @@ from findmy.reports.anisette import LocalAnisetteProvider
 from loguru import logger
 
 from .db_handling import MetaDataService
+from .time import Clock
 
 
 class AppleAccountManager:
@@ -113,7 +113,7 @@ class AppleAccountManager:
 
                 firstAttempt = False
 
-            time.sleep(1)
+            Clock.sleep(1)
 
         # load account
         self.apple_account = AppleAccount.from_json(self.account_path)
@@ -137,7 +137,7 @@ class AppleAccountManager:
             self.metadata_server.get_metadata(name="last_api_poll_time", default="0")
         )
         time_since_last_poll = (
-            int(datetime.datetime.now().timestamp()) - last_api_poll_time
+            int(Clock.now().timestamp()) - last_api_poll_time
         )  # time in seconds since last poll
 
         if self.polling_interval > time_since_last_poll:
@@ -147,7 +147,7 @@ class AppleAccountManager:
                     "Next API poll in {}s (at {} UTC) to avoid Apple API rate limitation violation.",
                     time_to_next_poll,
                     (
-                        datetime.datetime.now()
+                        Clock.now()
                         + datetime.timedelta(seconds=time_to_next_poll)
                     ).isoformat(timespec="seconds"),
                 )
@@ -188,7 +188,7 @@ class AppleAccountManager:
                 "AppleAccountManager.execute_api_poll: API Polled successfully. Next Poll in {}s ({} UTC).",
                 self.polling_interval,
                 (
-                    datetime.datetime.now()
+                    Clock.now()
                     + datetime.timedelta(seconds=self.polling_interval)
                 ).isoformat(timespec="seconds"),
             )
@@ -214,7 +214,7 @@ class AppleAccountManager:
             )
             self.metadata_server.set_metadata(
                 name="last_api_poll_time",
-                value=str(int(datetime.datetime.now().timestamp())),
+                value=str(int(Clock.now().timestamp())),
             )
 
 

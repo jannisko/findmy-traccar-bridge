@@ -1,4 +1,3 @@
-import datetime
 import hashlib
 from abc import ABC, abstractmethod
 
@@ -6,6 +5,7 @@ import requests
 from loguru import logger
 
 from .db_handling import Location, LocationService
+from .time import Clock
 
 
 # Abstract base class for endpoint pushers (e.g. classes that push location data to endpoints) - child classes must be implemented for the distinct endpoints (nextcloud, traccar, ...)
@@ -84,7 +84,7 @@ class LocationPusher(ABC):
 
         """
         time_since_last_poll = (
-            int(datetime.datetime.now().timestamp()) - self.last_push_time
+            int(Clock.now().timestamp()) - self.last_push_time
         )  # time in seconds since last push
         return self.pushing_interval < time_since_last_poll
 
@@ -116,7 +116,7 @@ class LocationPusher(ABC):
             f"Finished pushing attempts for key ID '{self.key_id}' and endpoint '{self.endpoint_url}'"
         )
 
-        self.last_push_time = int(datetime.datetime.now().timestamp())
+        self.last_push_time = int(Clock.now().timestamp())
 
 
 class TraccarLocationPusher(LocationPusher):
